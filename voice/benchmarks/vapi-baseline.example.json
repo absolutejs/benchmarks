@@ -1,0 +1,19 @@
+{
+  "source": "vapi",
+  "generatedAt": 0,
+  "results": [
+    {
+      "adapterId": "vapi-prod",
+      "summary": {
+        "averageElapsedMs": 0,
+        "averageTermRecall": 0,
+        "averageTimeToEndOfTurnMs": 0,
+        "averageTimeToFirstFinalMs": 0,
+        "averageTimeToFirstPartialMs": 0,
+        "averageWordErrorRate": 1,
+        "passRate": 0,
+        "wordAccuracyRate": 0
+      }
+    }
+  ]
+}

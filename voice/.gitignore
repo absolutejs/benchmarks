@@ -1,0 +1,9 @@
+node_modules/
+benchmark-results/
+benchmarks/your-vapi-metrics.json
+.env
+.env.local
+.env.*
+!.env.example
+*.log
+.DS_Store
