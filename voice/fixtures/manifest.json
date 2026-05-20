@@ -1,0 +1,358 @@
+[
+  {
+    "id": "quietly-alone-clean",
+    "title": "Short clean utterance",
+    "audioPath": "quietly-alone-clean.pcm",
+    "expectedText": "GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+    "expectedTerms": ["quietly alone", "no harm"],
+    "chunkDurationMs": 100,
+    "difficulty": "clean",
+    "tags": ["clean", "short", "librispeech"]
+  },
+  {
+    "id": "traveled-back-route-clean",
+    "title": "Long clean utterance",
+    "audioPath": "traveled-back-route-clean.pcm",
+    "expectedText": "WE PASSED AROUND ATLANTA CROSSED THE CHATTAHOOCHEE AND TRAVELED BACK OVER THE SAME ROUTE ON WHICH WE HAD MADE THE ARDUOUS CAMPAIGN UNDER JOE JOHNSTON",
+    "expectedTerms": ["atlanta", "chattahoochee", "joe johnston"],
+    "chunkDurationMs": 100,
+    "difficulty": "clean",
+    "tags": ["clean", "long", "librispeech"]
+  },
+  {
+    "id": "rainstorms-noisy",
+    "title": "Noisy utterance with synthetic pink noise",
+    "audioPath": "rainstorms-noisy.pcm",
+    "expectedText": "SLIGHT RAINSTORMS ARE LIKELY TO BE ENCOUNTERED IN A TRIP ROUND THE MOUNTAIN BUT ONE MAY EASILY FIND SHELTER BENEATH WELL THATCHED TREES THAT SHED THE RAIN LIKE A ROOF",
+    "expectedTerms": ["rainstorms", "thatched trees"],
+    "chunkDurationMs": 100,
+    "difficulty": "noisy",
+    "tags": ["noisy", "long", "synthetic-noise", "librispeech"]
+  },
+  {
+    "id": "stella-india-english37",
+    "title": "International English accent from India",
+    "audioPath": "stella-india-english37.pcm",
+    "expectedText": "PLEASE CALL STELLA ASK HER TO BRING THESE THINGS WITH HER FROM THE STORE SIX SPOONS OF FRESH SNOW PEAS FIVE THICK SLABS OF BLUE CHEESE AND MAYBE A SNACK FOR HER BROTHER BOB WE ALSO NEED A SMALL PLASTIC SNAKE AND A BIG TOY FROG FOR THE KIDS SHE CAN SCOOP THESE THINGS INTO THREE RED BAGS AND WE WILL GO MEET HER WEDNESDAY AT THE TRAIN STATION",
+    "expectedTerms": [
+      "stella",
+      "snow peas",
+      "blue cheese",
+      "brother bob",
+      "plastic snake",
+      "toy frog",
+      "three red bags",
+      "train station"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "accent",
+      "challenging",
+      "india",
+      "international",
+      "speech-accent-archive"
+    ]
+  },
+  {
+    "id": "stella-ghana-english507",
+    "title": "International English accent from Ghana",
+    "audioPath": "stella-ghana-english507.pcm",
+    "expectedText": "PLEASE CALL STELLA ASK HER TO BRING THESE THINGS WITH HER FROM THE STORE SIX SPOONS OF FRESH SNOW PEAS FIVE THICK SLABS OF BLUE CHEESE AND MAYBE A SNACK FOR HER BROTHER BOB WE ALSO NEED A SMALL PLASTIC SNAKE AND A BIG TOY FROG FOR THE KIDS SHE CAN SCOOP THESE THINGS INTO THREE RED BAGS AND WE WILL GO MEET HER WEDNESDAY AT THE TRAIN STATION",
+    "expectedTerms": [
+      "stella",
+      "snow peas",
+      "blue cheese",
+      "brother bob",
+      "plastic snake",
+      "toy frog",
+      "three red bags",
+      "train station"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "accent",
+      "challenging",
+      "ghana",
+      "international",
+      "speech-accent-archive"
+    ]
+  },
+  {
+    "id": "stella-singapore-english655",
+    "title": "International English accent from Singapore",
+    "audioPath": "stella-singapore-english655.pcm",
+    "expectedText": "PLEASE CALL STELLA ASK HER TO BRING THESE THINGS WITH HER FROM THE STORE SIX SPOONS OF FRESH SNOW PEAS FIVE THICK SLABS OF BLUE CHEESE AND MAYBE A SNACK FOR HER BROTHER BOB WE ALSO NEED A SMALL PLASTIC SNAKE AND A BIG TOY FROG FOR THE KIDS SHE CAN SCOOP THESE THINGS INTO THREE RED BAGS AND WE WILL GO MEET HER WEDNESDAY AT THE TRAIN STATION",
+    "expectedTerms": [
+      "stella",
+      "snow peas",
+      "blue cheese",
+      "brother bob",
+      "plastic snake",
+      "toy frog",
+      "three red bags",
+      "train station"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "accent",
+      "challenging",
+      "international",
+      "singapore",
+      "speech-accent-archive"
+    ]
+  },
+  {
+    "id": "stella-pakistan-english519",
+    "title": "International English accent from Pakistan",
+    "audioPath": "stella-pakistan-english519.pcm",
+    "expectedText": "PLEASE CALL STELLA ASK HER TO BRING THESE THINGS WITH HER FROM THE STORE SIX SPOONS OF FRESH SNOW PEAS FIVE THICK SLABS OF BLUE CHEESE AND MAYBE A SNACK FOR HER BROTHER BOB WE ALSO NEED A SMALL PLASTIC SNAKE AND A BIG TOY FROG FOR THE KIDS SHE CAN SCOOP THESE THINGS INTO THREE RED BAGS AND WE WILL GO MEET HER WEDNESDAY AT THE TRAIN STATION",
+    "expectedTerms": [
+      "stella",
+      "snow peas",
+      "blue cheese",
+      "brother bob",
+      "plastic snake",
+      "toy frog",
+      "three red bags",
+      "train station"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "accent",
+      "challenging",
+      "international",
+      "pakistan",
+      "speech-accent-archive"
+    ]
+  },
+  {
+    "id": "stella-jamaica-jamaican-creole-english1",
+    "title": "International English accent from Jamaica",
+    "audioPath": "stella-jamaica-jamaican-creole-english1.pcm",
+    "expectedText": "PLEASE CALL STELLA ASK HER TO BRING THESE THINGS WITH HER FROM THE STORE SIX SPOONS OF FRESH SNOW PEAS FIVE THICK SLABS OF BLUE CHEESE AND MAYBE A SNACK FOR HER BROTHER BOB WE ALSO NEED A SMALL PLASTIC SNAKE AND A BIG TOY FROG FOR THE KIDS SHE CAN SCOOP THESE THINGS INTO THREE RED BAGS AND WE WILL GO MEET HER WEDNESDAY AT THE TRAIN STATION",
+    "expectedTerms": [
+      "stella",
+      "snow peas",
+      "blue cheese",
+      "brother bob",
+      "plastic snake",
+      "toy frog",
+      "three red bags",
+      "train station"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "accent",
+      "challenging",
+      "international",
+      "jamaica",
+      "speech-accent-archive"
+    ]
+  },
+  {
+    "id": "stella-liberia-liberian-pidgin-english2",
+    "title": "International English accent from Liberia",
+    "audioPath": "stella-liberia-liberian-pidgin-english2.pcm",
+    "expectedText": "PLEASE CALL STELLA ASK HER TO BRING THESE THINGS WITH HER FROM THE STORE SIX SPOONS OF FRESH SNOW PEAS FIVE THICK SLABS OF BLUE CHEESE AND MAYBE A SNACK FOR HER BROTHER BOB WE ALSO NEED A SMALL PLASTIC SNAKE AND A BIG TOY FROG FOR THE KIDS SHE CAN SCOOP THESE THINGS INTO THREE RED BAGS AND WE WILL GO MEET HER WEDNESDAY AT THE TRAIN STATION",
+    "expectedTerms": [
+      "stella",
+      "snow peas",
+      "blue cheese",
+      "brother bob",
+      "plastic snake",
+      "toy frog",
+      "three red bags",
+      "train station"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "accent",
+      "challenging",
+      "international",
+      "liberia",
+      "speech-accent-archive"
+    ]
+  },
+  {
+    "id": "stella-sierra-leone-krio5",
+    "title": "International English accent from Sierra Leone",
+    "audioPath": "stella-sierra-leone-krio5.pcm",
+    "expectedText": "PLEASE CALL STELLA ASK HER TO BRING THESE THINGS WITH HER FROM THE STORE SIX SPOONS OF FRESH SNOW PEAS FIVE THICK SLABS OF BLUE CHEESE AND MAYBE A SNACK FOR HER BROTHER BOB WE ALSO NEED A SMALL PLASTIC SNAKE AND A BIG TOY FROG FOR THE KIDS SHE CAN SCOOP THESE THINGS INTO THREE RED BAGS AND WE WILL GO MEET HER WEDNESDAY AT THE TRAIN STATION",
+    "expectedTerms": [
+      "stella",
+      "snow peas",
+      "blue cheese",
+      "brother bob",
+      "plastic snake",
+      "toy frog",
+      "three red bags",
+      "train station"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "accent",
+      "challenging",
+      "international",
+      "sierra-leone",
+      "speech-accent-archive"
+    ]
+  },
+  {
+    "id": "stella-bulgaria-bulgarian20",
+    "title": "International English accent from Bulgaria",
+    "audioPath": "stella-bulgaria-bulgarian20.pcm",
+    "expectedText": "PLEASE CALL STELLA ASK HER TO BRING THESE THINGS WITH HER FROM THE STORE SIX SPOONS OF FRESH SNOW PEAS FIVE THICK SLABS OF BLUE CHEESE AND MAYBE A SNACK FOR HER BROTHER BOB WE ALSO NEED A SMALL PLASTIC SNAKE AND A BIG TOY FROG FOR THE KIDS SHE CAN SCOOP THESE THINGS INTO THREE RED BAGS AND WE WILL GO MEET HER WEDNESDAY AT THE TRAIN STATION",
+    "expectedTerms": [
+      "stella",
+      "snow peas",
+      "blue cheese",
+      "brother bob",
+      "plastic snake",
+      "toy frog",
+      "three red bags",
+      "train station"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "accent",
+      "challenging",
+      "bulgaria",
+      "international",
+      "speech-accent-archive"
+    ]
+  },
+  {
+    "id": "multiturn-two-clean",
+    "title": "Synthetic two-turn clean conversation",
+    "audioPath": "multiturn-two-clean.pcm",
+    "expectedText": "GO QUIETLY ALONE NO HARM WILL BEFALL YOU WE PASSED AROUND ATLANTA CROSSED THE CHATTAHOOCHEE AND TRAVELED BACK OVER THE SAME ROUTE ON WHICH WE HAD MADE THE ARDUOUS CAMPAIGN UNDER JOE JOHNSTON",
+    "expectedTerms": [
+      "quietly alone",
+      "atlanta",
+      "chattahoochee",
+      "joe johnston"
+    ],
+    "expectedTurnTexts": [
+      "GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+      "WE PASSED AROUND ATLANTA CROSSED THE CHATTAHOOCHEE AND TRAVELED BACK OVER THE SAME ROUTE ON WHICH WE HAD MADE THE ARDUOUS CAMPAIGN UNDER JOE JOHNSTON"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "clean",
+    "tags": ["clean", "conversation", "multi-turn", "synthetic"]
+  },
+  {
+    "id": "multiturn-three-mixed",
+    "title": "Synthetic three-turn mixed conversation",
+    "audioPath": "multiturn-three-mixed.pcm",
+    "expectedText": "GO QUIETLY ALONE NO HARM WILL BEFALL YOU SLIGHT RAINSTORMS ARE LIKELY TO BE ENCOUNTERED IN A TRIP ROUND THE MOUNTAIN BUT ONE MAY EASILY FIND SHELTER BENEATH WELL THATCHED TREES THAT SHED THE RAIN LIKE A ROOF GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+    "expectedTerms": ["quietly alone", "rainstorms", "thatched trees"],
+    "expectedTurnTexts": [
+      "GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+      "SLIGHT RAINSTORMS ARE LIKELY TO BE ENCOUNTERED IN A TRIP ROUND THE MOUNTAIN BUT ONE MAY EASILY FIND SHELTER BENEATH WELL THATCHED TREES THAT SHED THE RAIN LIKE A ROOF",
+      "GO QUIETLY ALONE NO HARM WILL BEFALL YOU"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": ["conversation", "multi-turn", "noisy", "stress", "synthetic"]
+  },
+  {
+    "id": "dialogue-two-clean",
+    "title": "Dialogue-style two-turn clean conversation",
+    "audioPath": "dialogue-two-clean.pcm",
+    "expectedText": "GO QUIETLY ALONE NO HARM WILL BEFALL YOU WE PASSED AROUND ATLANTA CROSSED THE CHATTAHOOCHEE AND TRAVELED BACK OVER THE SAME ROUTE ON WHICH WE HAD MADE THE ARDUOUS CAMPAIGN UNDER JOE JOHNSTON",
+    "expectedTerms": [
+      "quietly alone",
+      "atlanta",
+      "chattahoochee",
+      "joe johnston"
+    ],
+    "expectedTurnTexts": [
+      "GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+      "WE PASSED AROUND ATLANTA CROSSED THE CHATTAHOOCHEE AND TRAVELED BACK OVER THE SAME ROUTE ON WHICH WE HAD MADE THE ARDUOUS CAMPAIGN UNDER JOE JOHNSTON"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "clean",
+    "tags": [
+      "clean",
+      "conversation",
+      "dialogue-style",
+      "multi-turn",
+      "synthetic"
+    ]
+  },
+  {
+    "id": "dialogue-two-noisy",
+    "title": "Dialogue-style two-turn mixed clean and noisy conversation",
+    "audioPath": "dialogue-two-noisy.pcm",
+    "expectedText": "GO QUIETLY ALONE NO HARM WILL BEFALL YOU SLIGHT RAINSTORMS ARE LIKELY TO BE ENCOUNTERED IN A TRIP ROUND THE MOUNTAIN BUT ONE MAY EASILY FIND SHELTER BENEATH WELL THATCHED TREES THAT SHED THE RAIN LIKE A ROOF",
+    "expectedTerms": ["quietly alone", "rainstorms", "thatched trees"],
+    "expectedTurnTexts": [
+      "GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+      "SLIGHT RAINSTORMS ARE LIKELY TO BE ENCOUNTERED IN A TRIP ROUND THE MOUNTAIN BUT ONE MAY EASILY FIND SHELTER BENEATH WELL THATCHED TREES THAT SHED THE RAIN LIKE A ROOF"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "conversation",
+      "dialogue-style",
+      "multi-turn",
+      "noisy",
+      "synthetic"
+    ]
+  },
+  {
+    "id": "dialogue-three-clean",
+    "title": "Dialogue-style three-turn clean conversation",
+    "audioPath": "dialogue-three-clean.pcm",
+    "expectedText": "GO QUIETLY ALONE NO HARM WILL BEFALL YOU WE PASSED AROUND ATLANTA CROSSED THE CHATTAHOOCHEE AND TRAVELED BACK OVER THE SAME ROUTE ON WHICH WE HAD MADE THE ARDUOUS CAMPAIGN UNDER JOE JOHNSTON GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+    "expectedTerms": [
+      "quietly alone",
+      "atlanta",
+      "chattahoochee",
+      "joe johnston"
+    ],
+    "expectedTurnTexts": [
+      "GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+      "WE PASSED AROUND ATLANTA CROSSED THE CHATTAHOOCHEE AND TRAVELED BACK OVER THE SAME ROUTE ON WHICH WE HAD MADE THE ARDUOUS CAMPAIGN UNDER JOE JOHNSTON",
+      "GO QUIETLY ALONE NO HARM WILL BEFALL YOU"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "clean",
+    "tags": [
+      "clean",
+      "conversation",
+      "dialogue-style",
+      "multi-turn",
+      "synthetic"
+    ]
+  },
+  {
+    "id": "dialogue-three-mixed",
+    "title": "Dialogue-style three-turn mixed conversation",
+    "audioPath": "dialogue-three-mixed.pcm",
+    "expectedText": "GO QUIETLY ALONE NO HARM WILL BEFALL YOU SLIGHT RAINSTORMS ARE LIKELY TO BE ENCOUNTERED IN A TRIP ROUND THE MOUNTAIN BUT ONE MAY EASILY FIND SHELTER BENEATH WELL THATCHED TREES THAT SHED THE RAIN LIKE A ROOF GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+    "expectedTerms": ["quietly alone", "rainstorms", "thatched trees"],
+    "expectedTurnTexts": [
+      "GO QUIETLY ALONE NO HARM WILL BEFALL YOU",
+      "SLIGHT RAINSTORMS ARE LIKELY TO BE ENCOUNTERED IN A TRIP ROUND THE MOUNTAIN BUT ONE MAY EASILY FIND SHELTER BENEATH WELL THATCHED TREES THAT SHED THE RAIN LIKE A ROOF",
+      "GO QUIETLY ALONE NO HARM WILL BEFALL YOU"
+    ],
+    "chunkDurationMs": 100,
+    "difficulty": "challenging",
+    "tags": [
+      "conversation",
+      "dialogue-style",
+      "multi-turn",
+      "noisy",
+      "synthetic"
+    ]
+  }
+]
