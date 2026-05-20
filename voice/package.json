@@ -147,7 +147,8 @@
     "bench:vs:deepgram": "bun run ./scripts/benchmark-vs.ts deepgram all",
     "bench:vs:deepgram-flux": "bun run ./scripts/benchmark-vs.ts deepgram-flux all --compare benchmarks/your-vapi-metrics.json",
     "bench:vs:deepgram-nova": "bun run ./scripts/benchmark-vs.ts deepgram-nova all",
-    "bench:vs:openai": "bun run ./scripts/benchmark-vs.ts openai all"
+    "bench:vs:openai": "bun run ./scripts/benchmark-vs.ts openai all",
+    "corpus:multilingual": "bun run ./scripts/build-multilingual-corpus.ts"
   },
   "dependencies": {
     "@absolutejs/voice": "0.0.22-beta.526",
