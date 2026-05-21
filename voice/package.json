@@ -11,6 +11,7 @@
     "bench:assemblyai:code-switch": "bun run ./scripts/benchmark-stt.ts assemblyai code-switch",
     "bench:assemblyai:multilingual": "bun run ./scripts/benchmark-stt.ts assemblyai multilingual",
     "bench:assemblyai:sessions": "bun run ./scripts/benchmark-session.ts assemblyai",
+    "bench:assistant:providers": "bun run ./scripts/run-assistant-provider-shootout.ts",
     "bench:code-switch": "bun run ./scripts/benchmark-stt.ts all code-switch",
     "bench:code-switch:ca-es": "bun run ./scripts/benchmark-stt.ts all code-switch-ca-es",
     "bench:code-switch:ca-es:corts:series": "bun run ./scripts/benchmark-stt.ts all code-switch-ca-es-corts --runs 5",
