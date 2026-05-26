@@ -69,6 +69,16 @@ for (let attempt = 0; attempt < 100; attempt += 1) {
 	}
 	await sleep(50);
 }
+// Fail-fast if the polling above never reached `ready` — better to abort than
+// produce a "bench ran but measured nothing useful" result.
+if (
+	writer.get().status !== 'ready' ||
+	subscriber.get().status !== 'ready'
+) {
+	throw new Error(
+		`sync clients never became ready (writer=${writer.get().status}, subscriber=${subscriber.get().status})`
+	);
+}
 
 const nOf = (state: ReturnType<typeof subscriber.get>): number => {
 	const row = state.data[0];
@@ -77,18 +87,31 @@ const nOf = (state: ReturnType<typeof subscriber.get>): number => {
 };
 
 let lastSeen = nOf(subscriber.get());
+// Per-iteration safety net — if a subscriber update never arrives (network
+// stall, server bug, dropped frame) we'd rather see a loud failure than a
+// silently-hung run. 10 s is comfortably above the p99s we measure.
+const ITERATION_TIMEOUT_MS = 10_000;
 
 /** Issue one bump from the writer and wait until the subscriber observes it. */
 const propagate = (): Promise<number> =>
 	new Promise<number>((resolve, reject) => {
 		const startedAt = performance.now();
+		const expected = lastSeen + 1;
+		const timer = setTimeout(() => {
+			unsubscribe();
+			reject(
+				new Error(
+					`sync propagation iteration timed out after ${ITERATION_TIMEOUT_MS} ms (expected n=${expected}, last seen=${lastSeen})`
+				)
+			);
+		}, ITERATION_TIMEOUT_MS);
 		// Wire the subscriber watcher BEFORE issuing the write so we never miss
 		// a fast fan-out that lands between mutate() and subscribe().
-		const expected = lastSeen + 1;
 		const unsubscribe = subscriber.subscribe((state) => {
 			const seen = nOf(state);
 			if (seen >= expected) {
 				lastSeen = seen;
+				clearTimeout(timer);
 				unsubscribe();
 				resolve(performance.now() - startedAt);
 			}
@@ -96,6 +119,7 @@ const propagate = (): Promise<number> =>
 		writer
 			.mutate({ args: {}, name: 'bump' })
 			.catch((error: unknown) => {
+				clearTimeout(timer);
 				unsubscribe();
 				reject(error);
 			});

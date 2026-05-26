@@ -26,16 +26,21 @@ const writer = new ConvexClient(url);
 const subscriber = new ConvexClient(url);
 
 let latest = 0;
-let pending: { expected: number; resolve: (latency: number) => void } | null =
-	null;
+type Pending = {
+	expected: number;
+	resolve: (latency: number) => void;
+	timer: ReturnType<typeof setTimeout>;
+};
+let pending: Pending | null = null;
 let startedAt = 0;
 
 const unsubscribe = subscriber.onUpdate(api.counter.get, {}, (value) => {
 	const n = typeof value === 'number' ? value : 0;
 	latest = n;
 	if (pending !== null && n >= pending.expected) {
-		const { resolve } = pending;
+		const { resolve, timer } = pending;
 		pending = null;
+		clearTimeout(timer);
 		resolve(performance.now() - startedAt);
 	}
 });
@@ -43,19 +48,35 @@ const unsubscribe = subscriber.onUpdate(api.counter.get, {}, (value) => {
 // Let the initial subscription settle so we know `latest` is the real value.
 await sleep(800);
 
+// Per-iteration safety net — a hung subscriber push should fail loudly, not
+// stall the bench forever. 15 s is well above Convex's measured p99 over WAN.
+const ITERATION_TIMEOUT_MS = 15_000;
+
 const propagate = (): Promise<number> =>
 	new Promise<number>((resolve, reject) => {
 		const expected = latest + 1;
-		pending = { expected, resolve };
 		startedAt = performance.now();
+		const timer = setTimeout(() => {
+			pending = null;
+			reject(
+				new Error(
+					`Convex propagation iteration timed out after ${ITERATION_TIMEOUT_MS} ms (expected n=${expected}, last seen=${latest})`
+				)
+			);
+		}, ITERATION_TIMEOUT_MS);
+		pending = { expected, resolve, timer };
 		writer.mutation(api.counter.bump, {}).catch((error: unknown) => {
 			pending = null;
+			clearTimeout(timer);
 			reject(error);
 		});
 	});
 
-const warmup = 10;
-const count = 200;
+// Match bench-convex.ts's warmup/count (cloud round-trip is ~70 ms, so larger
+// counts pay quickly; staying consistent with the existing convention keeps
+// percentiles directly comparable).
+const warmup = 25;
+const count = 500;
 
 for (let index = 0; index < warmup; index += 1) await propagate();
 

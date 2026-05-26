@@ -44,16 +44,49 @@ const currentN = (): number => {
 
 let lastSeen = currentN();
 
+// Fail-fast bounds. In Zero v1.5 with `auth: undefined` against a zero-cache
+// with deployed permissions, the materialized view never receives row data
+// (resultType stays 'unknown'). Without these bounds the bench would hang
+// indefinitely — instead we surface a clear failure quickly.
+const MATERIALIZATION_TIMEOUT_MS = 5_000;
+const ITERATION_TIMEOUT_MS = 10_000;
+if (lastSeen === -1) {
+	// Give the materialization one more bounded chance before bailing.
+	const startedAt = performance.now();
+	while (
+		performance.now() - startedAt < MATERIALIZATION_TIMEOUT_MS &&
+		currentN() === -1
+	) {
+		await sleep(100);
+	}
+	if (currentN() === -1) {
+		throw new Error(
+			`Zero materialized view never received counter row after ${MATERIALIZATION_TIMEOUT_MS} ms — likely the v1.5 auth/permissions transition issue documented in RESULTS.md.`
+		);
+	}
+	lastSeen = currentN();
+}
+
 const propagate = (): Promise<number> =>
 	new Promise<number>((resolve, reject) => {
 		const startedAt = performance.now();
 		const expected = lastSeen + 1;
+
+		const timer = setTimeout(() => {
+			unsubscribe();
+			reject(
+				new Error(
+					`Zero propagation iteration timed out after ${ITERATION_TIMEOUT_MS} ms (expected n=${expected}, last seen=${lastSeen})`
+				)
+			);
+		}, ITERATION_TIMEOUT_MS);
 
 		// Subscribe BEFORE issuing the mutation so we never miss a fast push.
 		const unsubscribe = view.addListener(() => {
 			const seen = currentN();
 			if (seen >= expected) {
 				lastSeen = seen;
+				clearTimeout(timer);
 				unsubscribe();
 				resolve(performance.now() - startedAt);
 			}
@@ -63,6 +96,7 @@ const propagate = (): Promise<number> =>
 		const promise = (pending as unknown as { server?: Promise<unknown> })
 			.server;
 		(promise ?? pending).catch((error: unknown) => {
+			clearTimeout(timer);
 			unsubscribe();
 			reject(error);
 		});
