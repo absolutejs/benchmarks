@@ -1,13 +1,18 @@
 /**
  * Zero benchmark — the same shared-counter workload against a local zero-cache
- * (the closest architectural rival to @absolutejs/sync: both run on your own
- * Postgres, both push diffs over a WebSocket). Measures write round-trip
- * latency (mutation → server ack) and sequential throughput.
+ * (its own Postgres, WS sync) with a separate push server running the custom
+ * mutator authoritatively. Measures write round-trip latency + sequential
+ * throughput.
  *
- * Setup: see ../ZERO.md. Run: bun run scripts/bench-zero.ts
+ * Setup (one terminal each):
+ *   1. docker run … sync-bench-pg (see ZERO.md)
+ *   2. bun run scripts/zero-push-server.ts
+ *   3. ZERO_UPSTREAM_DB=… ZERO_PUSH_URL=http://localhost:5051/push … node ./node_modules/.bin/zero-cache
+ *   4. bun run scripts/bench-zero.ts
  */
 import { Zero } from '@rocicorp/zero';
 import { schema } from '../zero/schema';
+import { createMutators } from '../zero/mutators';
 import { measure, report } from './lib/measure';
 
 const sleep = (timeMs: number) =>
@@ -15,26 +20,17 @@ const sleep = (timeMs: number) =>
 
 const z = new Zero({
 	auth: undefined,
+	mutators: createMutators(),
 	schema,
 	server: 'http://localhost:4848',
 	userID: `bench-${Math.random().toString(36).slice(2, 8)}`
 });
 
-// Materialize the counter row + wait for the first hydrate.
-const view = z.query.counters.where('id', '=', 'c').materialize();
-for (let attempt = 0; attempt < 100; attempt += 1) {
-	if (view.data.length > 0) {
-		break;
-	}
-	await sleep(50);
-}
+// Let the WS handshake settle before measuring.
+await sleep(500);
 
 const bump = async () => {
-	const current = view.data[0];
-	const n = Number(current?.n ?? 0) + 1;
-	// In Zero v1.x, the mutate call returns a `{ client, server }` pair; awaiting
-	// `.server` measures server-acked round-trip (not just optimistic apply).
-	const pending = z.mutate.counters.update({ id: 'c', n });
+	const pending = z.mutate.counter.bump({});
 	const promise = (pending as unknown as { server?: Promise<unknown> }).server;
 	if (promise !== undefined) {
 		await promise;
@@ -44,7 +40,7 @@ const bump = async () => {
 };
 
 const stats = await measure({ count: 500, warmup: 25, work: bump });
-report('Zero', 'local (zero-cache + Postgres, WS)', stats);
+report('Zero', 'local (zero-cache + push server + PG)', stats);
 
 z.close();
 process.exit(0);

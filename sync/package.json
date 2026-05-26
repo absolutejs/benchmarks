@@ -16,7 +16,9 @@
     "@tanstack/db": "^0.6.7",
     "@tanstack/query-core": "^5.100.14",
     "@tanstack/query-db-collection": "^1.0.38",
-    "convex": "^1.17.0"
+    "convex": "^1.17.0",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/bun": "latest",
