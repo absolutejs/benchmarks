@@ -9,7 +9,7 @@ import { createCollection } from '@tanstack/db';
 import { queryCollectionOptions } from '@tanstack/query-db-collection';
 import { QueryClient } from '@tanstack/query-core';
 import { bumpCounter, readCounter, sql } from '../shared/counter-db';
-import { measure, report } from './lib/measure';
+import { measure, measureConcurrent, report, reportConcurrent } from './lib/measure';
 
 const PORT = 4322;
 
@@ -52,6 +52,17 @@ const bump = async () => {
 
 const stats = await measure({ count: 500, warmup: 25, work: bump });
 report('TanStack DB', 'local (REST + queryCollection) + PG-backed', stats);
+
+console.log('\n## Concurrent (pipelined) throughput\n');
+for (const concurrency of [4, 16, 64]) {
+	const cStats = await measureConcurrent({
+		concurrency,
+		total: 500,
+		warmup: 25,
+		work: bump
+	});
+	reportConcurrent('TanStack DB', concurrency, cStats);
+}
 
 void app.stop();
 await sql.end();

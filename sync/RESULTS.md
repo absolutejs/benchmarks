@@ -43,16 +43,39 @@ The architecture is optimized for read-heavy reactive queries (where it
 shines), not for write round-trip latency. Sync's single-process write path
 (WS → engine → PG, no extra hop) is the real advantage.
 
+## Concurrent (pipelined) throughput
+
+Same workload, but keep K writes in flight at a time (pipelined `Promise.all`),
+measure sustained writes/sec under load:
+
+| Backend                | concurrency = 1 (seq) | 4   | 16  | 64  | scaling (1→64) |
+| ---------------------- | --------------------- | --- | --- | --- | -------------- |
+| **@absolutejs/sync**   | 54                    | 99  | 188 | **305** | **5.6×**     |
+| TanStack DB            | 73                    | 175 | 278 | 297     | 4.1×         |
+| Convex (cloud)         | 18                    | 34  | 42  | 43      | 2.4× (saturates) |
+| Zero                   | 16                    | 24  | 24  | 32      | 2.0× (saturates) |
+
+The interesting takeaway is **scaling**, not just the absolute number: sync and
+TanStack DB scale well with concurrency (their writers parallelise cleanly via
+the connection pool), while Convex saturates around 43 w/s (cloud connection
+limits + single contended row) and Zero around 32 (its push-server pipeline
+serialises writes per client). At 64-way concurrency sync sustains ~10× Zero's
+write throughput.
+
 ## What this does NOT measure
 
-- **Single client, sequential, awaited.** No concurrent writers — that's a
-  separate test (next).
 - **One trivial mutation.** A single counter `UPDATE`, no joins/permissions/
   schema validation hot path.
 - **Local loopback.** Even TanStack DB's HTTP goes over loopback (no TLS, no
   real WAN).
-- **No reconnect / offline / large hydration / contention.** That's where sync
-  engines actually differ *qualitatively* — and it's the next thing to test.
+- **Single contended row.** Real workloads spread writes across many rows;
+  per-row contention behaves differently from per-server contention.
+- **No reconnect / offline / large hydration.** Where sync engines actually
+  differ *qualitatively* — separate tests warranted.
+- **Convex from a hosted box near its region.** The ~53 ms p50 is dominated by
+  WSL→US-East internet. Running the same bench from a US-East VM would shrink
+  Convex's number into the local cluster (likely 5–15 ms). Deferred — needs
+  cloud-VM provisioning.
 
 ## The honest "story"
 

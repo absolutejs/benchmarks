@@ -7,7 +7,7 @@
  */
 import { ConvexClient } from 'convex/browser';
 import { api } from '../convex/_generated/api';
-import { measure, report } from './lib/measure';
+import { measure, measureConcurrent, report, reportConcurrent } from './lib/measure';
 
 const url = process.env.CONVEX_URL;
 if (url === undefined || url.length === 0) {
@@ -22,6 +22,17 @@ const stats = await measure({
 });
 
 report('Convex', 'cloud — US East (HTTPS)', stats);
+
+console.log('\n## Concurrent (pipelined) throughput\n');
+for (const concurrency of [4, 16, 64]) {
+	const cStats = await measureConcurrent({
+		concurrency,
+		total: 200,
+		warmup: 10,
+		work: () => client.mutation(api.counter.bump, {})
+	});
+	reportConcurrent('Convex', concurrency, cStats);
+}
 
 await client.close();
 process.exit(0);

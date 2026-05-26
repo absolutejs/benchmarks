@@ -13,7 +13,7 @@
 import { Zero } from '@rocicorp/zero';
 import { schema } from '../zero/schema';
 import { createMutators } from '../zero/mutators';
-import { measure, report } from './lib/measure';
+import { measure, measureConcurrent, report, reportConcurrent } from './lib/measure';
 
 const sleep = (timeMs: number) =>
 	new Promise((resolve) => setTimeout(resolve, timeMs));
@@ -41,6 +41,17 @@ const bump = async () => {
 
 const stats = await measure({ count: 500, warmup: 25, work: bump });
 report('Zero', 'local (zero-cache + push server + PG)', stats);
+
+console.log('\n## Concurrent (pipelined) throughput\n');
+for (const concurrency of [4, 16, 64]) {
+	const cStats = await measureConcurrent({
+		concurrency,
+		total: 500,
+		warmup: 25,
+		work: bump
+	});
+	reportConcurrent('Zero', concurrency, cStats);
+}
 
 z.close();
 process.exit(0);

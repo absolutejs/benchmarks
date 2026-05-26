@@ -14,7 +14,7 @@ import {
 } from '@absolutejs/sync/engine';
 import { createSyncCollection } from '@absolutejs/sync/client';
 import { bumpCounter, readCounter, sql } from '../shared/counter-db';
-import { measure, report } from './lib/measure';
+import { measure, measureConcurrent, report, reportConcurrent } from './lib/measure';
 
 const PORT = 4319;
 
@@ -64,6 +64,17 @@ const stats = await measure({
 });
 
 report('@absolutejs/sync', 'local (WS) + PG-backed', stats);
+
+console.log('\n## Concurrent (pipelined) throughput\n');
+for (const concurrency of [4, 16, 64]) {
+	const cStats = await measureConcurrent({
+		concurrency,
+		total: 1_000,
+		warmup: 50,
+		work: () => collection.mutate({ args: {}, name: 'bump' })
+	});
+	reportConcurrent('@absolutejs/sync', concurrency, cStats);
+}
 
 collection.close();
 void app.stop();

@@ -68,6 +68,58 @@ export const measure = async (options: {
 	return computeStats(latencies, performance.now() - start);
 };
 
+/**
+ * Pipelined throughput: keep `concurrency` writes in flight at a time until
+ * `total` writes complete, recording each write's individual latency. Reports
+ * the aggregate as `Stats` — `throughput` is total / elapsed (writes/sec under
+ * load), and `mean/p50/p95` are per-write distributions while saturated.
+ */
+export const measureConcurrent = async (options: {
+	warmup: number;
+	total: number;
+	concurrency: number;
+	work: () => Promise<unknown>;
+}): Promise<Stats> => {
+	for (let index = 0; index < options.warmup; index += 1) {
+		await options.work();
+	}
+
+	const latencies: number[] = [];
+	const start = performance.now();
+	let issued = 0;
+	while (issued < options.total) {
+		const wave = Math.min(options.concurrency, options.total - issued);
+		const promises: Promise<void>[] = [];
+		for (let index = 0; index < wave; index += 1) {
+			const at = performance.now();
+			promises.push(
+				options.work().then(() => {
+					latencies.push(performance.now() - at);
+				})
+			);
+		}
+		await Promise.all(promises);
+		issued += wave;
+	}
+
+	return computeStats(latencies, performance.now() - start);
+};
+
+/** Compact concurrent-throughput summary row. */
+export const reportConcurrent = (
+	label: string,
+	concurrency: number,
+	stats: Stats
+) => {
+	const round = (value: number, digits = 2) =>
+		Number(value.toFixed(digits)).toLocaleString('en-US', {
+			maximumFractionDigits: digits
+		});
+	console.log(
+		`  - ${label} @ concurrency=${concurrency}: ${Math.round(stats.throughput).toLocaleString('en-US')} writes/sec (mean ${round(stats.mean, 1)}ms · p95 ${round(stats.p95, 1)}ms)`
+	);
+};
+
 /** Print a single backend's results as a Markdown block + a one-liner row. */
 export const report = (label: string, where: string, stats: Stats) => {
 	const round = (value: number, digits = 2) =>
