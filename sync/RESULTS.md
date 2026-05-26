@@ -14,7 +14,7 @@ Setup hardware: WSL2 dev box, Bun 1.3, system Node 22.
 | Convex                 | cloud, GH Actions runner (Wyoming) → Convex    | 71.3     | 76.6     | 83.2     | 90.8     | 77.5      | 13               |
 | Zero                   | local (zero-cache + push server + PG)          | 44.4     | 66.9     | 104.9    | 151.3    | 71.1      | 14               |
 
-Reproduce: `bun install && bun run bench:sync && bun run bench:tanstack && bun run bench:zero` (Zero needs the push server + zero-cache running, see `ZERO.md`; Convex needs a deploy key, see `CONVEX.md`).
+Reproduce: `bun install && bun run bench:sync && bun run bench:tanstack && bun run bench:zero` (Zero needs the push server + zero-cache running, see `ZERO.md`; Convex needs a deploy key, see `CONVEX.md`). Propagation-latency bench (write → remote-subscriber): `bun run propagation:sync` / `propagation:convex` — see the "Propagation latency" section below.
 
 ## What's driving each row
 
@@ -92,6 +92,38 @@ write throughput.
 > and TanStack DB pay extra hops (zero-cache→push, HTTP REST) that sync's
 > single-process write path doesn't have. That's the real, defensible thesis —
 > not "X is N× faster than Y" out of context.
+
+## Propagation latency — write → remote-subscriber-receive
+
+The write-roundtrip table above is "writer issues mutation → server acks." It's
+the right floor metric, but it isn't the qualitative thing live-query engines
+exist for. The harness `scripts/propagation-*.ts` measures the second thing:
+two clients connect, one bumps the counter, the other has a subscription on
+`counter` — latency is from issuing the mutation to the *subscriber* observing
+the new `n`.
+
+| Backend                | Where                | min   | p50      | p95      | p99     | mean    |
+| ---------------------- | -------------------- | ----- | -------- | -------- | ------- | ------- |
+| **@absolutejs/sync**   | local (WS + PG)      | 5.3   | **11.0** | **15.8** | 23.3    | 11.2    |
+| Convex                 | cloud (HTTPS)        | 60.8  | 69.4     | 86.9     | 105.6   | 72.0    |
+| Zero                   | local (zero-cache)   | —     | —        | —        | —       | —       |
+
+**The shape of the gap:** sync's propagation adds only ~1.5 ms over its own
+write-ack roundtrip — fan-out is in-process, the subscriber's WS gets the
+diff frame within the same tick. Convex's propagation adds ~17 ms over its
+write-ack — the recomputed result has to make a second public-internet hop
+to push to the subscriber. That's structural to a hosted backend, not a Convex
+flaw.
+
+**Zero is unmeasured here, honestly.** v1.5 deprecates the old
+`definePermissions` model and points at cookie-based auth; with
+`auth: undefined` against a `zero-cache` that has deployed permissions, the
+subscriber's materialized view stays at `resultType: 'unknown'` indefinitely
+and never receives row data — the mutation still acks and writes to PG. This
+is a Zero auth-transition issue, not an engine-latency measurement, so a
+fabricated number would be worse than the gap. Re-run after Zero v1.6 / the
+cookie-auth migration is a queued item (`scripts/propagation-zero.ts` is in
+the repo and ready).
 
 ## Methodology
 

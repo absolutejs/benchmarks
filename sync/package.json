@@ -8,7 +8,10 @@
     "bench:sync": "bun run ./scripts/bench-sync.ts",
     "bench:tanstack": "bun run ./scripts/bench-tanstack.ts",
     "bench:zero": "bun run ./scripts/bench-zero.ts",
-    "bench:convex": "bun run ./scripts/bench-convex.ts"
+    "bench:convex": "bun run ./scripts/bench-convex.ts",
+    "propagation:sync": "bun run ./scripts/propagation-sync.ts",
+    "propagation:zero": "bun run ./scripts/propagation-zero.ts",
+    "propagation:convex": "bun run ./scripts/propagation-convex.ts"
   },
   "dependencies": {
     "@absolutejs/sync": "^0.15.0",
