@@ -10,7 +10,8 @@ Setup hardware: WSL2 dev box, Bun 1.3, system Node 22.
 | ---------------------- | ---------------------------------------------- | -------- | -------- | -------- | -------- | --------- | ---------------- |
 | **@absolutejs/sync**   | local (WS) + Postgres                          | **4.2**  | **9.5**  | **18.0** | **26.2** | **10.4**  | **96**           |
 | TanStack DB            | local (REST + queryCollection) + Postgres      | 7.6      | 17.5     | 30.3     | 36.1     | 18.9      | 53               |
-| Convex                 | cloud, US East (HTTPS)                         | 45.5     | 52.8     | 66.2     | 90.8     | 54.7      | 18               |
+| Convex                 | cloud, dev WSL → Convex (HTTPS)                | 45.5     | 52.8     | 66.2     | 90.8     | 54.7      | 18               |
+| Convex                 | cloud, GH Actions runner (Wyoming) → Convex    | 71.3     | 76.6     | 83.2     | 90.8     | 77.5      | 13               |
 | Zero                   | local (zero-cache + push server + PG)          | 44.4     | 66.9     | 104.9    | 151.3    | 71.1      | 14               |
 
 Reproduce: `bun install && bun run bench:sync && bun run bench:tanstack && bun run bench:zero` (Zero needs the push server + zero-cache running, see `ZERO.md`; Convex needs a deploy key, see `CONVEX.md`).
@@ -28,10 +29,14 @@ top of sync per write — that's the layer the architecture trades for
 flexibility (it pairs with many backends, not just one).
 
 **Convex's ~53 ms is almost entirely network.** Every write is a public-internet
-round-trip from this WSL box to their US-East datacenter — physics, not engine.
-A Convex app deployed in US-East AWS calling US-East Convex would shrink this
-into the same ballpark as the local backends. The honest framing here is
-"avoiding a hosted-backend hop," not "our engine is faster."
+round-trip from this WSL box to Convex's region — physics, not engine. We ran
+the same bench again from a GitHub Actions runner (a cloud VM in Wyoming) to
+remove the consumer-ISP variable: p50 settled at **76.6 ms**, with a very tight
+distribution (p95 83.2 ms — TLS/HTTPS overhead is consistent when the network
+itself is the bottleneck). Even from a US datacenter, Convex's network-bound
+floor sits at ~50–80 ms. The honest framing is "avoiding a hosted-backend hop,"
+not "our engine is faster." (Workflow: `.github/workflows/bench-convex-us-east.yml`
+on `absolutejs/benchmarks`.)
 
 **Zero is the genuinely surprising row** — its closest-architectural-rival
 status (its own PG, push diffs over WS) suggested it would be in sync's
@@ -72,10 +77,12 @@ write throughput.
   per-row contention behaves differently from per-server contention.
 - **No reconnect / offline / large hydration.** Where sync engines actually
   differ *qualitatively* — separate tests warranted.
-- **Convex from a hosted box near its region.** The ~53 ms p50 is dominated by
-  WSL→US-East internet. Running the same bench from a US-East VM would shrink
-  Convex's number into the local cluster (likely 5–15 ms). Deferred — needs
-  cloud-VM provisioning.
+- **Convex from inside its own region.** The cloud-VM run (Wyoming → Convex,
+  p50 77 ms) closes the consumer-ISP variable but is still a cross-region hop
+  to Convex's datacenter. A workload deployed inside the same Convex region
+  (same AWS AZ as the deployment) would shrink further — but the application
+  process still talks to the backend over HTTPS, so the network floor never
+  truly goes away the way it does for an in-process library.
 
 ## The honest "story"
 
