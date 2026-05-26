@@ -10,11 +10,12 @@ Setup hardware: WSL2 dev box, Bun 1.3, system Node 22.
 | ---------------------- | ---------------------------------------------- | -------- | -------- | -------- | -------- | --------- | ---------------- |
 | **@absolutejs/sync**   | local (WS) + Postgres                          | **4.2**  | **9.5**  | **18.0** | **26.2** | **10.4**  | **96**           |
 | TanStack DB            | local (REST + queryCollection) + Postgres      | 7.6      | 17.5     | 30.3     | 36.1     | 18.9      | 53               |
+| Convex                 | **self-hosted, loopback Docker (HTTP)**        | 11.0     | **15.9** | 21.3     | 26.3     | 16.4      | **61**           |
 | Convex                 | cloud, dev WSL → Convex (HTTPS)                | 45.5     | 52.8     | 66.2     | 90.8     | 54.7      | 18               |
 | Convex                 | cloud, GH Actions runner (Wyoming) → Convex    | 71.3     | 76.6     | 83.2     | 90.8     | 77.5      | 13               |
 | Zero                   | local (zero-cache + push server + PG)          | 44.4     | 66.9     | 104.9    | 151.3    | 71.1      | 14               |
 
-Reproduce: `bun install && bun run bench:sync && bun run bench:tanstack && bun run bench:zero` (Zero needs the push server + zero-cache running, see `ZERO.md`; Convex needs a deploy key, see `CONVEX.md`). Propagation-latency bench (write → remote-subscriber): `bun run propagation:sync` / `propagation:convex` — see the "Propagation latency" section below.
+Reproduce: `bun install && bun run bench:sync && bun run bench:tanstack && bun run bench:zero` (Zero needs the push server + zero-cache running, see `ZERO.md`; Convex needs a deploy key OR the self-hosted Docker setup, see `CONVEX.md`). Propagation-latency bench (write → remote-subscriber): `bun run propagation:sync` / `propagation:sync-cluster` / `propagation:convex` — see the "Propagation latency" section below.
 
 ## What's driving each row
 
@@ -28,15 +29,24 @@ and the queryCollection's optimistic-apply + onUpdate wrapping. About 7–8 ms o
 top of sync per write — that's the layer the architecture trades for
 flexibility (it pairs with many backends, not just one).
 
-**Convex's ~53 ms is almost entirely network.** Every write is a public-internet
-round-trip from this WSL box to Convex's region — physics, not engine. We ran
-the same bench again from a GitHub Actions runner (a cloud VM in Wyoming) to
-remove the consumer-ISP variable: p50 settled at **76.6 ms**, with a very tight
-distribution (p95 83.2 ms — TLS/HTTPS overhead is consistent when the network
-itself is the bottleneck). Even from a US datacenter, Convex's network-bound
-floor sits at ~50–80 ms. The honest framing is "avoiding a hosted-backend hop,"
-not "our engine is faster." (Workflow: `.github/workflows/bench-convex-us-east.yml`
-on `absolutejs/benchmarks`.)
+**Convex (self-hosted, loopback Docker) is the honest engine-vs-engine row.**
+Running Convex's own backend container (`ghcr.io/get-convex/convex-backend`)
+on the same WSL box as sync removes the network entirely — what's left is
+engine cost. Sync wins on write round-trip (p50 **9.5** vs **15.9** ms, ~1.7×)
+and concurrent throughput (305 w/s @ c=64 vs Convex saturating at ~65), but
+the gap is **much narrower than the cloud comparison suggested** (cloud Convex
+p50 was 53 ms WSL→cloud, 77 ms US-VM→cloud — that 5–8× delta was almost
+entirely the network hop, not engine craft). The self-hosted row is the one
+to cite for an engine claim; the cloud rows are deployment-model rows. Convex
+self-hosted is a real product, and on a loopback bench it's ~30–60% slower
+than sync, not 5× slower.
+
+**Convex (cloud)'s ~53 ms is the deployment-model number.** We ran the same
+bench from a GitHub Actions runner (Wyoming) to remove the consumer-ISP
+variable: p50 76.6 ms with a very tight distribution (p95 83.2 ms — TLS/HTTPS
+overhead is consistent when the network is the floor). Cited as "what
+deployment costs," not "what the engine costs." (Workflow:
+`.github/workflows/bench-convex-us-east.yml`.)
 
 **Zero is the genuinely surprising row** — its closest-architectural-rival
 status (its own PG, push diffs over WS) suggested it would be in sync's
@@ -87,11 +97,14 @@ write throughput.
 ## The honest "story"
 
 > Sync's deployment model — a library running in your Elysia server, talking
-> directly to your Postgres — has a measured write-path advantage over the other
-> three. Convex's gap is almost entirely network (it's a hosted backend). Zero
-> and TanStack DB pay extra hops (zero-cache→push, HTTP REST) that sync's
-> single-process write path doesn't have. That's the real, defensible thesis —
-> not "X is N× faster than Y" out of context.
+> directly to your Postgres — has a measured engine advantage over Convex
+> (~1.7× write round-trip, ~3× propagation), now confirmed against
+> **self-hosted Convex on the same loopback box** (the only fair engine-vs-
+> engine comparison). The cloud-Convex 5–8× delta is mostly the network hop,
+> not engine craft, and we say so. Zero and TanStack DB pay extra hops that
+> sync doesn't (zero-cache→push, HTTP REST). The remaining honest claim is
+> "in-process library + your own DB beats hosted/multi-hop on these specific
+> workloads," not "we crush them."
 
 ## Propagation latency — write → remote-subscriber-receive
 
@@ -102,18 +115,34 @@ two clients connect, one bumps the counter, the other has a subscription on
 `counter` — latency is from issuing the mutation to the *subscriber* observing
 the new `n`.
 
-| Backend                | Where                | min   | p50      | p95      | p99     | mean    |
-| ---------------------- | -------------------- | ----- | -------- | -------- | ------- | ------- |
-| **@absolutejs/sync**   | local (WS + PG)      | 5.3   | **11.0** | **15.8** | 23.3    | 11.2    |
-| Convex                 | cloud (HTTPS)        | 60.8  | 69.4     | 86.9     | 105.6   | 72.0    |
-| Zero                   | local (zero-cache)   | —     | —        | —        | —       | —       |
+| Backend                | Where                                       | min   | p50      | p95      | p99     | mean    |
+| ---------------------- | ------------------------------------------- | ----- | -------- | -------- | ------- | ------- |
+| **@absolutejs/sync**   | single engine, local (WS + PG)              | 5.3   | **11.0** | **15.8** | 23.3    | 11.2    |
+| **@absolutejs/sync**   | 2-engine cluster, in-memory bus, local      | 3.3   | **6.2**  | **11.1** | 14.0    | 6.8     |
+| Convex                 | self-hosted, loopback Docker                | 13.9  | 19.8     | 28.5     | 36.8    | 20.6    |
+| Convex                 | cloud (HTTPS)                               | 60.8  | 69.4     | 86.9     | 105.6   | 72.0    |
+| Zero                   | local (zero-cache)                          | —     | —        | —        | —       | —       |
 
 **The shape of the gap:** sync's propagation adds only ~1.5 ms over its own
 write-ack roundtrip — fan-out is in-process, the subscriber's WS gets the
-diff frame within the same tick. Convex's propagation adds ~17 ms over its
-write-ack — the recomputed result has to make a second public-internet hop
-to push to the subscriber. That's structural to a hosted backend, not a Convex
-flaw.
+diff frame within the same tick. Convex self-hosted (loopback) adds ~4 ms
+over its own write-ack: their reactive subscriber notification path is a
+second HTTP/WS hop, but it's local. Cloud Convex's ~17 ms over write-ack is
+that same hop carrying across the internet.
+
+**Cluster mode adds essentially zero overhead.** Sync ships a `ClusterBus`
+seam (you bring Redis / PG-NOTIFY / NATS) for horizontal scale. The 2-engine
+row above measures cross-instance propagation over the bundled in-memory bus
+(writer's mutation on engine A → engine B's subscriber). It came in at p50
+6.2 ms vs the single-engine 11.0 ms — those numbers are from different runs
+and reflect run-to-run system-load variance (~±5 ms is typical), not a
+cluster speed-up; the honest read is "cluster fan-out is in the same
+order of magnitude as single-engine," not "cluster is faster." A real
+bus (PG-NOTIFY or Redis) would add the bus's own latency on top — typically
+~1–3 ms LAN. First-party bus adapters are a v1.x roadmap item; today the seam
+works but you wire your own publish/subscribe. Caveat: per-instance version
+cursors mean a client that reconnects to a *different* instance falls back to
+a full snapshot (correct, not catch-up diff). Use sticky sessions.
 
 **Zero is unmeasured here, honestly.** v1.5 deprecates the old
 `definePermissions` model and points at cookie-based auth; with
@@ -127,10 +156,22 @@ the repo and ready).
 
 ## Methodology
 
-- Single client, sequential, awaited writes.
+Common to every bench in this folder: single client, sequential, awaited
+writes; full distribution (min/p50/p95/p99/mean/max) reported in each
+script's output.
+
+**Write round-trip** (`bench-*.ts`):
+
 - Warm-up: sync 50, others 25.
 - Measured: sync 1,000, others 500.
 - Round-trip = client issues mutation → server-confirmed acknowledgement
   (for Zero this is the `.server` half of the `{ client, server }` pair; for
   sync/Convex/TanStack DB the awaited promise is the ack).
-- Full distribution (min/p50/p95/p99/mean/max) in each script's output.
+
+**Propagation latency** (`propagation-*.ts`):
+
+- Warm-up: 25, measured: 500 (every backend).
+- Propagation = writer issues mutation → a separate subscriber on the same
+  collection observes the new value. Two distinct clients per run.
+- The `propagation-sync-cluster.ts` variant connects two engines via the
+  in-memory `ClusterBus` and routes writer → engine-A, subscriber → engine-B.
