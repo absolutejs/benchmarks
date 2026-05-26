@@ -1,0 +1,49 @@
+name: bench-convex-us-east
+
+# Runs the shared-counter benchmark against Convex from a GitHub-hosted runner
+# (Microsoft Azure, US East by default) — co-located with Convex's US-East
+# cloud, so the latency-floor isn't dominated by an open-internet hop from a
+# dev box. This is the engine-vs-engine number that the local results in
+# sync/RESULTS.md can't produce.
+#
+# Setup (one-time):
+#  1. In the absolutejs/benchmarks repo: Settings → Secrets and variables →
+#     Actions → New repository secret. Add two secrets:
+#       - CONVEX_DEPLOY_KEY   (from Convex dashboard → project → settings)
+#       - CONVEX_URL          (e.g. https://<dep>.convex.cloud)
+#  2. Trigger via "Run workflow" on the Actions tab.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Push functions to the existing Convex deployment
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: bunx convex deploy --yes
+      - name: Run Convex benchmark (US East ↔ US East)
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: bun run bench:convex | tee /tmp/convex-us-east.log
+      - name: Print runner network info (for the record)
+        if: always()
+        run: |
+          echo "runner region (best effort):"
+          curl -s https://ipinfo.io/region || true
+          echo
+          curl -s https://ipinfo.io/city || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: convex-us-east-results
+          path: /tmp/convex-us-east.log
