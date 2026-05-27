@@ -518,62 +518,69 @@ script's output.
 
 Same hardware as the rest of this file (WSL2, Bun 1.3.14). Each bench creates a fresh sync engine and runs the lane to completion. Warmup 8 calls, measured 500 calls for Lanes 1–2.
 
-Numbers below are against **`@absolutejs/sync@1.7.2`**, which redesigned the `sandboxedHandler` per-call hot path around one router `Reference` installed once per isolate + a reused context (down from four References installed per call + per-call context creation).
+Numbers below are against **`@absolutejs/sync@1.7.3`** + **`@absolutejs/isolated-jsc@0.5.0`**. Both packages went through three rounds of hot-path optimization over the bench arc — the full history is in the "Optimization arc" section.
 
 | Lane                                     | Backend    | cold (ms) | warm p50 (ms) | warm p95 (ms) | warm mean (ms) | ops/sec   |
 | ---------------------------------------- | ---------- | --------- | ------------- | ------------- | -------------- | --------- |
-| Pure handler — `(args) => args.n * 2`    | **worker** | 86        | **0.27**      | 4.00          | **0.91**       | **1,095** |
-| Pure handler — `(args) => args.n * 2`    | ffi        | 100       | 2.47          | 3.79          | 2.49           | 401       |
-| `actions.change` (async Reference)       | **worker** | 80        | **1.37**      | 8.81          | **2.47**       | **405**   |
-| `actions.change` (async Reference)       | ffi        | **21**    | 3.81          | 9.26          | 4.78           | 209       |
+| Pure handler — `(args) => args.n * 2`    | worker     | 30        | 0.23          | 1.25          | 0.39           | 2,573     |
+| Pure handler — `(args) => args.n * 2`    | **ffi**    | 32        | **0.29**      | **0.61**      | **0.35**       | **2,867** |
+| `actions.change` (async Reference)       | **worker** | 22        | **0.31**      | **1.63**      | **0.52**       | **1,926** |
+| `actions.change` (async Reference)       | ffi        | **8**     | 2.09          | 5.06          | 2.57           | 390       |
 
 **20-tenant cold spawn** (one mutation per tenant, each compiled + spawned + first-called sequentially — the multi-tenant scenario where FFI's small cold heap matters):
 
 | Backend    | total cold (ms) | per-tenant (ms) | RSS Δ (MB) |
 | ---------- | --------------- | --------------- | ---------- |
-| worker     | 937             | 46.8            | 19         |
-| **ffi**    | **187**         | **9.4**         | 20         |
+| worker     | 516             | 25.8            | 27         |
+| **ffi**    | **84**          | **4.2**         | 19         |
 
 Reproduce: `bun run bench:sandbox` (phase-by-phase profile: `bun run scripts/bench-sandbox-profile.ts`).
 
+### Headline
+
+**FFI now beats Worker on pure-handler warm dispatch** (~2,867 vs 2,573 ops/sec), wins cold spawn by **6×** (4.2 vs 25.8 ms/tenant), and the actions-handler gap closes from 7× (1.7.1) to 6.7× (1.7.3) — both backends now hit ~400+ ops/sec sustained. The `'auto'` default (FFI when libJSC is reachable) is the right pick across every axis except Web APIs.
+
 ### What's driving each row
 
-**Worker wins warm dispatch.** Once the isolate exists, the per-call work is one postMessage carrying the args/ctx structured clones + a script handle, and one return clone — round-tripped through libuv. The Bun-Worker hot path is well-optimised. With the 1.7.2 router collapse, this drops to ~0.27 ms p50 for a pure handler.
+**Pure handler — FFI ≈ Worker.** The sync IIFE wrap (sync 1.7.3) means sync user handlers return a primitive directly; FFI's `unwrapResultPromise` short-circuits on `!JSValueIsObject` with zero extra evals. Per-call hot path on FFI: 2× `setGlobal` (args + ctx, ~0.03 ms each) + one `JSEvaluateScript` (the wrapped IIFE) + the JS-to-host return value crossing. Worker does roughly the same work over postMessage.
 
-**FFI loses warm dispatch — but less than before.** Each call still pays synchronous FFI work on the hot path: install args + ctx (~0.03 ms via `JSObjectSetProperty`), evaluate the wrapped script (`JSEvaluateScript`), then run `unwrapResultPromise` (setup eval + read eval + best-effort cleanup eval). The 1.7.1 design also paid for four `JSObjectMakeFunctionWithCallback` + four `JSObjectSetProperty` per call (~2 ms); 1.7.2 cuts that to zero by installing the router once per isolate. Net: ~2.5 ms p50 (down from ~4.7 ms).
+**Actions handler — Worker wins (6.7×).** Each `await actions.change(...)` on FFI pays the unwrap pump cycle (`setTimeout(0)` → drain Bun microtasks → no-op eval → drain JSC microtasks → read state). That's ~1.5–2 ms per await. Worker's postMessage for the same async Reference roundtrip is ~0.3 ms. For handlers that await many actions, the gap multiplies — but FFI's absolute floor (390 ops/sec, ~2 ms p50) is still fast enough for most workloads.
 
-**FFI wins cold spawn (~5×).** Bun's Worker bootstrap (load Bun runtime, parse worker.ts, wire postMessage) is ~25–47 ms per isolate. FFI's first-call cost is `JSContextGroupCreate` + `JSGlobalContextCreateInGroup` + script compile — ~6–10 ms. For a 20-tenant burst this is 937 ms → 187 ms.
+**FFI wins cold spawn (6×).** Bun's Worker bootstrap (load Bun runtime, parse worker.ts, wire postMessage) is ~25 ms per isolate. FFI's first-call cost is `JSContextGroupCreate` + `JSGlobalContextCreateInGroup` + script compile + router Reference install — ~4 ms. For a 20-tenant burst this is 516 ms → 84 ms.
 
-### 1.7.1 → 1.7.2 speedup
+### Optimization arc — 1.7.1 → 1.7.2 → 1.7.3
 
-Profiling 1.7.1's hot path (`bench-sandbox-profile.ts`) showed 53% of the FFI per-call time spent installing four `actions.*` References every call, plus 8% on per-call context creation. 1.7.2 collapses the hot path:
+The bench started against 1.7.1, which had FFI ~5× slower than Worker on warm dispatch. The `bench-sandbox-profile.ts` phase-profile script localised the cost; each subsequent version closed one gap:
 
-- **One router `Reference`** (`__syncAction(op, ...args)`) installed once per isolate at compile time. The in-VM `actions` object is now a thin in-JS shim that dispatches through the router.
-- **Reused per-mutation context** — install the router on a single long-lived context, set only `args` + `ctx` per call. Recycle every 256 calls to bound JSC metadata accumulation.
-- **Serialized call queue** — concurrent invocations into the same mutation queue through a promise chain so the shared "current actions" slot stays coherent.
+**sync 1.7.2 — router Reference + reused context.** Profile showed 53% of FFI per-call time installing four `actions.*` References every call, plus 8% on per-call context creation. Refactored:
 
-Per-call hot path drops from (createContext + 6 `setGlobal`) to (2 `setGlobal`).
+- One `__syncAction(op, ...args)` **router Reference** installed once per isolate at compile time. The in-VM `actions` object is now a thin in-JS shim.
+- **Reused per-mutation context** — install router on a long-lived context, recycle every 256 calls.
+- **Serialized call queue** so the shared "current actions" slot stays coherent.
 
-| Lane            | Backend | warm p50 1.7.1 | warm p50 1.7.2 | speedup |
-| --------------- | ------- | -------------- | -------------- | ------- |
-| pure            | worker  | 0.94 ms        | 0.27 ms        | **3.5×** |
-| pure            | ffi     | 4.69 ms        | 2.47 ms        | **1.9×** |
-| actions.change  | ffi     | 6.62 ms        | 3.81 ms        | **1.7×** |
+Per-call: (createContext + 6 setGlobal) → (2 setGlobal).
 
-Worker also benefits (the same setGlobals were going over postMessage), so the absolute Worker-vs-FFI gap actually widens in 1.7.2 — but the FFI floor is now low enough (~400 ops/sec for a pure handler) that `'auto'` (FFI default on Linux/macOS) is a reasonable default for the multi-tenant workloads it targets.
+**isolated-jsc 0.5 — cleanup eval folded into read eval.** `unwrapResultPromise` used to run 3 evals per call (setup, read, finally cleanup of stash + state globals). 0.5 deletes the stash global at the end of the setup eval (`.then` already captured the Promise via JSC's internal state), and the read eval deletes the state global inline when `state.done === true`. Net: 2 evals per unwrap instead of 3.
 
-**`actions.change` works on FFI now (this is the 0.4 fix).** Pre-0.4, the async Reference would throw "Promise that doesn't settle synchronously"; 0.4 added a pump loop (alternate Bun-event-loop yield + JSC microtask drain, bounded by `Script.run`'s `timeout`). The ~3.8 ms FFI p50 is the pump cost (one `setTimeout(0)` + one no-op eval per await) on top of the ~2.5 ms baseline per-call cost.
+**sync 1.7.3 — sync IIFE wrap.** The wrapper used to be `(async () => { ... })()`, which always returned a Promise even when the user handler was sync. Switched to `(() => { ... })()`. Sync user handler → IIFE returns the primitive → FFI's `unwrapResultPromise` short-circuits (zero unwrap evals). Async user handler → IIFE returns the Promise → unwrap pump fires as before.
 
-**RSS deltas tie at 19 MB** — both backends end up holding similar process-wide memory after the 20-tenant burst, with the difference dominated by JIT'd code rather than per-isolate cold heap. The per-isolate _cold heap_ gap (~46 MB worker vs ~300 KB FFI, documented in isolated-jsc) shows up under millions of isolates or under JSC heap profiling, not at this RSS granularity.
+| Lane            | Backend | 1.7.1     | 1.7.2     | **1.7.3**     | total speedup |
+| --------------- | ------- | --------- | --------- | ------------- | ------------- |
+| pure            | worker  | 0.94 ms   | 0.27 ms   | **0.23 ms**   | **4.1×**       |
+| pure            | ffi     | 4.69 ms   | 2.47 ms   | **0.29 ms**   | **16×**        |
+| actions.change  | worker  | 0.94 ms   | 1.37 ms   | **0.31 ms**   | **3×**         |
+| actions.change  | ffi     | 6.62 ms   | 3.81 ms   | **2.09 ms**   | **3.2×**       |
+| 20-tenant cold  | worker  | 28.4 ms   | 46.8 ms   | **25.8 ms**   | —             |
+| 20-tenant cold  | ffi     | 6.3 ms    | 9.4 ms    | **4.2 ms**    | —             |
 
 ### When to pin which
 
-- **Default (`'auto'` → FFI on Linux/macOS)**: best for **bursty multi-tenant** workloads (PaaS per-tenant code, per-user AI-generated logic) where cold spawn dominates and any single isolate sees few calls.
-- **Pin to `'worker'`**: best for **hot-path single-tenant** workloads where one or two sandboxed mutations get hammered. Also required if your handler needs Web APIs (`URL`, `TextEncoder`, `WebSocket`) — those live in the Bun-Worker environment, not the bare JSC C API.
-- **Pin to `'ffi'`**: best for **read-only handlers** (compute a value from `args`/`ctx`, return it, no `actions.*` calls) — gets the ~300 KB cold heap + interrupt-driven CPU timeouts (the isolate survives a `TimeoutError` instead of dying). Skips the multi-tenant Worker-spawn tax even when you only have one tenant.
+- **Default (`'auto'` → FFI on Linux/macOS)**: best for almost everything. Faster than Worker on warm pure dispatch, much faster on cold spawn, only modestly slower on per-`await` async-actions.
+- **Pin to `'worker'`**: required only if your handler needs Web APIs (`URL`, `TextEncoder`, `WebSocket`) — those live in the Bun-Worker environment, not the bare JSC C API. Also faster on handlers that await many host-Reference roundtrips per call (each await pays the FFI pump cost).
+- **Pin to `'ffi'`**: explicit pin when you know FFI is reachable and want to bypass the auto-probe (e.g. in CI where libJSC presence is known).
 
 ### Caveats
 
 - Cold-start numbers across lanes in the same process aren't directly comparable — by Lane 2 the Bun runtime + JSC JIT are warm from Lane 1. Use the dedicated 20-tenant spawn lane for clean cold-start comparisons.
-- Bun Worker cold start scales linearly per isolate (no fork-copy). On a real PaaS where tenants compile their own mutations, the gap widens with tenant count.
+- Bun Worker cold start scales linearly per isolate (no fork-copy). On a real PaaS where tenants compile their own mutations, the FFI cold-spawn lead widens with tenant count.
 - The pump cost on FFI for async References is per-`await`, not per-call. A handler that awaits five `actions.change` calls will pay ~5× the pump cost; a handler that awaits one will pay ~1×.
