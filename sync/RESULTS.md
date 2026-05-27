@@ -154,6 +154,139 @@ fabricated number would be worse than the gap. Re-run after Zero v1.6 / the
 cookie-auth migration is a queued item (`scripts/propagation-zero.ts` is in
 the repo and ready).
 
+## Reactive-read scaling — the half the counter bench didn't measure
+
+Counter-style benches measure floor (write round-trip, propagation). They don't
+measure the things real reactive-DB workloads actually fail on: fan-out under
+load, cold-open of a populated workspace, reconnect catch-up, ranged
+subscriptions over big tables, multi-row commits. Five scripts under
+`scripts/reactive/` — sync only; competitor comparisons would need a
+matched-workload port each and that's a follow-up. The point of THIS section
+is to find where sync itself scales and where it doesn't.
+
+### 1. Subscription fan-out scaling (`subscription-scaling.ts`)
+
+One writer mutates; N subscribers all watching the same collection receive
+the update. Per-iteration latency = time from the writer's `mutate` to the
+**slowest** subscriber observing the change (the user-visible "all clients
+are up-to-date" wall).
+
+| subscribers | tail p50 (ms) | tail p95 (ms) | tail p99 (ms) |
+| ----------- | ------------- | ------------- | ------------- |
+| 1           | 16.5          | 28.6          | 31.6          |
+| 10          | 43.0          | 50.3          | 55.8          |
+| 100         | 272.3         | 310.2         | 310.9         |
+| 1,000       | 2,691.8       | 3,858.5       | 3,904.9       |
+
+**Honest read: this scales linearly.** Tail latency is roughly 2.7 ms per
+extra subscriber once you're past ~100. At 1,000 subscribers the slowest
+client waits ~2.7 s per write; at 10,000 it would be unusable. The current
+engine fans out serially over each WS connection. Closing this is a real
+engine task: per-query diff sharing (compute the change once for every
+subscriber on the same query+params), parallel WS frame writes, and
+backpressure-aware batching. Cluster mode + a real bus would let you spread
+this across processes but each process still hits the same per-process ceiling.
+
+### 2. Cold hydration (`cold-hydration.ts`)
+
+How long from "fresh subscriber connects" to "snapshot is on the client and
+the collection is `ready`" at varying table sizes.
+
+| rows    | p50 (ms) | p95 (ms) | p99 (ms) | max (ms) |
+| ------- | -------- | -------- | -------- | -------- |
+| 100     | 14.5     | 18.7     | 18.7     | 20.4     |
+| 1,000   | 36.2     | 57.9     | 57.9     | 59.1     |
+| 10,000  | 98.6     | 107.6    | 107.6    | 131.2    |
+| 100,000 | 879.3    | 1,650.4  | 1,650.4  | 1,717.0  |
+
+Sub-linear: 1,000× the rows costs ~60× the time. Under 10k rows you're at
+sub-100 ms. At 100k rows you're at ~880 ms — usable for cold opens of large
+workspaces, not snappy. The dominant cost at large sizes is JSON encoding
+the snapshot + a single WS frame; streaming snapshots would cut p95.
+
+### 3. Reconnect-after-offline (`reconnect-replay.ts`)
+
+A subscriber disconnects; the writer fires K mutations while the subscriber
+is offline; the subscriber reconnects (fresh client, no cached version).
+
+| missed writes | p50 (ms) | p95 (ms) | max (ms) |
+| ------------- | -------- | -------- | -------- |
+| 1             | 5.5      | 9.5      | 10.0     |
+| 10            | 7.0      | 15.7     | 16.8     |
+| 100           | 5.4      | 15.6     | 16.2     |
+
+Reconnect cost is **constant** in missed-writes count — the engine sends the
+current snapshot, not a replay of every missed change. Caveat: this also
+means reconnect cost = cold-hydration cost. For a 100k-row workspace,
+"reconnect after offline" is ~880 ms regardless of whether you missed one
+change or a thousand. A real diff-catch-up path (resume from cached version)
+would be much cheaper for the "missed one change" case; today that's a
+roadmap item.
+
+### 4. Ranged subscriptions (`ranged-subscriptions.ts`)
+
+A reactive query that filters and orders — `tasks where assignee = $me ORDER
+BY priority`. The implementation uses `ctx.db.all` + client-side filter
+(the default path most users will write; pushing the filter into SQL is the
+user's job today). Two measurements per table size: cold subscribe + live
+update propagation when ONE matching row changes.
+
+| rows in table | cold p50 (ms) | cold p95 (ms) | live update p50 (ms) | live update p95 (ms) |
+| ------------- | ------------- | ------------- | -------------------- | -------------------- |
+| 1,000         | 11.1          | 16.2          | 21.8                 | 29.3                 |
+| 10,000        | 42.9          | 46.3          | 72.5                 | 89.6                 |
+| 100,000       | 313.4         | 390.5         | 577.9                | 634.1                |
+
+Live-update cost is roughly 2× write-roundtrip because the query body
+re-runs the whole `db.all` + filter on every change to `tasks`. At 100k rows
+a single mutation to one matching row costs ~580 ms to propagate, because
+the engine re-scans the entire table to recompute the filter result. **This
+is the cost the user pays for not pushing the filter to SQL.** Sync ships
+`defineGraphCollection` for incremental operator-graph queries (true
+push-down + delta maintenance); a follow-up will measure that path and
+compare.
+
+### 5. Multi-row transaction throughput (`multi-row-tx.ts`)
+
+The shared-counter bench writes one row per commit. Real workloads commit
+many. This measures sequential awaited commits at varying batch sizes,
+with one subscriber attached so fan-out is a real cost.
+
+| rows / commit | commits/sec | rows/sec |
+| ------------- | ----------- | -------- |
+| 1             | 46          | 46       |
+| 10            | 50          | 496      |
+| 100           | 26          | 2,630    |
+| 1,000         | 5           | 5,393    |
+
+Commits/sec is roughly constant for small batches (PG transaction overhead
+amortises), then drops as the per-commit fan-out cost (subscriber gets N row
+diffs per commit, sent as N WS frames today) starts to dominate. At
+batch=1000 you're moving ~5,400 rows/sec — adequate, not impressive.
+Batch-framed fan-out (one WS frame per batch, not per row) would close most
+of this gap.
+
+### What this section shows
+
+Sync's strong floor numbers (write round-trip, propagation) hold under the
+"counter" workload — but the engine has clear scaling cliffs at the things
+real apps grow into:
+
+- **Subscription fan-out is O(N) in subscribers.** Biggest weakness; needs
+  per-query diff sharing + parallel writes. Practical ceiling today is a few
+  hundred concurrent subs on the same query before tail latency degrades.
+- **Reactive query re-runs are O(table size)** when the query body calls
+  `ctx.db.all` and filters client-side. Push-down to SQL (or to the
+  `defineGraphCollection` operator graph) keeps queries bounded.
+- **Reconnect = cold hydration** today; no diff-catch-up from a saved
+  version.
+- **Fan-out cost per change set is per-row.** Batch-framing the WS payload
+  would help large-batch throughput.
+
+These are the real engineering items to take on if "beat Convex at their
+game" is the goal. The counter benches above already show sync wins on
+small workloads; the path to also winning at scale runs through this list.
+
 ## Methodology
 
 Common to every bench in this folder: single client, sequential, awaited
@@ -175,3 +308,12 @@ script's output.
   collection observes the new value. Two distinct clients per run.
 - The `propagation-sync-cluster.ts` variant connects two engines via the
   in-memory `ClusterBus` and routes writer → engine-A, subscriber → engine-B.
+
+**Reactive-read scaling** (`scripts/reactive/*.ts`):
+
+- Sync only; uses a separate `rtasks` table seeded per script (no overlap
+  with the counter workload).
+- Warm-up + measured-iteration counts vary by script (each one is sized for
+  the workload, see the script header).
+- Per-iteration latencies and per-rate throughput are computed via the
+  shared `lib/measure.ts`.

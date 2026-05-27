@@ -12,7 +12,12 @@
     "propagation:sync": "bun run ./scripts/propagation-sync.ts",
     "propagation:sync-cluster": "bun run ./scripts/propagation-sync-cluster.ts",
     "propagation:zero": "bun run ./scripts/propagation-zero.ts",
-    "propagation:convex": "bun run ./scripts/propagation-convex.ts"
+    "propagation:convex": "bun run ./scripts/propagation-convex.ts",
+    "reactive:fanout": "bun run ./scripts/reactive/subscription-scaling.ts",
+    "reactive:hydration": "bun run ./scripts/reactive/cold-hydration.ts",
+    "reactive:reconnect": "bun run ./scripts/reactive/reconnect-replay.ts",
+    "reactive:ranged": "bun run ./scripts/reactive/ranged-subscriptions.ts",
+    "reactive:multi-row-tx": "bun run ./scripts/reactive/multi-row-tx.ts"
   },
   "dependencies": {
     "@absolutejs/sync": "^0.15.0",
