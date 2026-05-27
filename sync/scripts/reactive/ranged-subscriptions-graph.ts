@@ -55,15 +55,18 @@ engine.registerReader('tasks', { all: () => readAllTasks() });
 engine.registerWriter<Row>('tasks', {
 	delete: () => {},
 	insert: async (row: Row) => insertTask(row),
-	update: async (row: { id: string }) =>
-		(await bumpTask(row.id)) ?? {
-			assignee: 'alex',
-			createdAt: 0,
-			done: false,
-			id: row.id,
-			priority: 0,
-			title: ''
+	update: async (row: { id: string }) => {
+		// Fail fast on missing rows — better than handing the engine a
+		// fabricated default and skewing the bench result.
+		const updated = await bumpTask(row.id);
+		if (!updated) {
+			throw new Error(
+				`bumpTask missed id=${row.id} — the test row was not seeded`
+			);
 		}
+
+		return updated;
+	}
 });
 
 // THIS is the difference vs ranged-subscriptions.ts: a graph collection. The
@@ -218,44 +221,60 @@ const measureAtSize = async (rowCount: number) => {
 	return { cold: coldStats, live: liveStats };
 };
 
-const results: Array<{
-	rows: number;
-	coldP50: number;
-	coldP95: number;
-	liveP50: number;
-	liveP95: number;
-}> = [];
-for (const rows of [1_000, 10_000, 100_000]) {
-	console.log(`# ${rows.toLocaleString('en-US')} rows in table (graph)…`);
-	const out = await measureAtSize(rows);
-	console.log(
-		`  cold subscribe: p50 ${round(out.cold.p50, 1)} ms · p95 ${round(out.cold.p95, 1)} ms`
-	);
-	console.log(
-		`  live update:    p50 ${round(out.live.p50, 1)} ms · p95 ${round(out.live.p95, 1)} ms`
-	);
-	results.push({
-		coldP50: out.cold.p50,
-		coldP95: out.cold.p95,
-		liveP50: out.live.p50,
-		liveP95: out.live.p95,
-		rows
-	});
-}
+// try/finally so Postgres + the Elysia server are always released, even if
+// a measureAtSize throws (timeout, schema problem, etc).
+let exitCode = 0;
+try {
+	const results: Array<{
+		rows: number;
+		coldP50: number;
+		coldP95: number;
+		liveP50: number;
+		liveP95: number;
+	}> = [];
+	for (const rows of [1_000, 10_000, 100_000]) {
+		console.log(`# ${rows.toLocaleString('en-US')} rows in table (graph)…`);
+		const out = await measureAtSize(rows);
+		console.log(
+			`  cold subscribe: p50 ${round(out.cold.p50, 1)} ms · p95 ${round(out.cold.p95, 1)} ms`
+		);
+		console.log(
+			`  live update:    p50 ${round(out.live.p50, 1)} ms · p95 ${round(out.live.p95, 1)} ms`
+		);
+		results.push({
+			coldP50: out.cold.p50,
+			coldP95: out.cold.p95,
+			liveP50: out.live.p50,
+			liveP95: out.live.p95,
+			rows
+		});
+	}
 
-console.log(
-	'\n## Ranged subscriptions (graph collection) — `tasks where assignee=alex order by priority`\n'
-);
-console.log(
-	'| rows in table | cold p50 (ms) | cold p95 (ms) | live update p50 (ms) | live update p95 (ms) |'
-);
-console.log('|---|---|---|---|---|');
-for (const row of results) {
 	console.log(
-		`| ${row.rows.toLocaleString('en-US')} | ${round(row.coldP50, 1)} | ${round(row.coldP95, 1)} | ${round(row.liveP50, 1)} | ${round(row.liveP95, 1)} |`
+		'\n## Ranged subscriptions (graph collection) — `tasks where assignee=alex order by priority`\n'
 	);
+	console.log(
+		'| rows in table | cold p50 (ms) | cold p95 (ms) | live update p50 (ms) | live update p95 (ms) |'
+	);
+	console.log('|---|---|---|---|---|');
+	for (const row of results) {
+		console.log(
+			`| ${row.rows.toLocaleString('en-US')} | ${round(row.coldP50, 1)} | ${round(row.coldP95, 1)} | ${round(row.liveP50, 1)} | ${round(row.liveP95, 1)} |`
+		);
+	}
+} catch (error) {
+	console.error('bench failed:', error);
+	exitCode = 1;
+} finally {
+	try {
+		await app.stop();
+	} catch (error) {
+		console.error('app.stop() failed:', error);
+	}
+	try {
+		await sql.end();
+	} catch (error) {
+		console.error('sql.end() failed:', error);
+	}
 }
-
-void app.stop();
-await sql.end();
-process.exit(0);
+process.exit(exitCode);

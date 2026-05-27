@@ -333,11 +333,12 @@ real apps grow into:
   hundred concurrent subs on the same query before tail latency degrades.
 - **Reactive query re-runs are O(table size)** when the query body calls
   `ctx.db.all` and filters client-side — BUT this is a default-path cost,
-  not an engine ceiling. The graph-collection variant (`ranged-subs-graph`)
-  drops live-update latency at 100k rows from ~580 ms to ~42 ms (13.8×) by
-  pushing the filter to SQL and routing incremental changes through an
-  operator graph. `defineGraphCollection` is the recommended pattern for
-  ranged queries over big tables.
+  not an engine ceiling. The graph-collection variant
+  (`scripts/reactive/ranged-subscriptions-graph.ts`, or
+  `bun run reactive:ranged-graph`) drops live-update latency at 100k rows
+  from ~580 ms to ~42 ms (13.8×) by pushing the filter to SQL and routing
+  incremental changes through an operator graph. `defineGraphCollection`
+  is the recommended pattern for ranged queries over big tables.
 - **Reconnect = cold hydration** today; no diff-catch-up from a saved
   version.
 - **Fan-out cost per change set is per-row.** Batch-framing the WS payload
