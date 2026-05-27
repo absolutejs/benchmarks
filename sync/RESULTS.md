@@ -277,6 +277,31 @@ subscriber on the same query+params), parallel WS frame writes, and
 backpressure-aware batching. Cluster mode + a real bus would let you spread
 this across processes but each process still hits the same per-process ceiling.
 
+### 1b. Subscribe-storm (`subscribe-storm.ts`, sync 1.3+ cache)
+
+Where 1a measures fan-out cost (one write → N subscribers), this measures
+the **subscribe** path: N fresh subscribers to the same query connect
+simultaneously, do any of them actually hit the DB? Convex coalesces
+queries across all online clients ("every specific combination of
+(query code, parameters, database read set) executes only once"). Sync
+1.1 deduped reactive reruns within a single write batch; 1.3 lifts that
+across batches via a cross-client query result cache.
+
+| N subscribers | cache=on ready (ms) | cache=on DB hits | cache=off ready (ms) | cache=off DB hits | speedup |
+| ------------- | ------------------- | ---------------- | -------------------- | ----------------- | --------- |
+| 1             | 56                  | 1                | 53                   | 1                 | warmup    |
+| 10            | 54                  | **0**            | 103                  | 10                | DB: 10→0  |
+| 100           | 151                 | **0**            | 229                  | 100               | DB: 100→0 |
+| 1,000         | 830                 | **0**            | 1,437                | 1,000             | DB: 1k→0  |
+
+Wall-clock improvement is ~1.5–1.9× because each subscriber still pays
+the per-WS handshake + snapshot frame transport cost. The DB-side cost
+is what matters at scale: at 1k subs we went from 1,000 PG queries to 1.
+Cache entries are invalidated when a write overlaps the read set; the
+batch's rerun then refreshes the cache so the *next* subscriber after a
+write is still a hit. Different `ctx` references stay isolated (per-user
+query bodies are unaffected).
+
 ### 2. Cold hydration (`cold-hydration.ts`)
 
 How long from "fresh subscriber connects" to "snapshot is on the client and

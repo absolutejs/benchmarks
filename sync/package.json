@@ -21,10 +21,11 @@
     "reactive:ranged-graph": "bun run ./scripts/reactive/ranged-subscriptions-graph.ts",
     "reactive:multi-row-tx": "bun run ./scripts/reactive/multi-row-tx.ts",
     "reactive:wire-bytes-sync": "bun run ./scripts/reactive/wire-bytes-sync.ts",
-    "reactive:wire-bytes-convex": "bun run ./scripts/reactive/wire-bytes-convex.ts"
+    "reactive:wire-bytes-convex": "bun run ./scripts/reactive/wire-bytes-convex.ts",
+    "reactive:subscribe-storm": "bun run ./scripts/reactive/subscribe-storm.ts"
   },
   "dependencies": {
-    "@absolutejs/sync": "^1.2.0",
+    "@absolutejs/sync": "^1.3.0",
     "@absolutejs/sync-bus-pg": "^0.0.1",
     "@rocicorp/zero": "^1.5.0",
     "@tanstack/db": "^0.6.7",
