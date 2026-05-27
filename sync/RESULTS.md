@@ -599,3 +599,32 @@ Per-call: (createContext + 6 setGlobal) → (2 setGlobal).
 - Cold-start numbers across lanes in the same process aren't directly comparable — by Lane 2 the Bun runtime + JSC JIT are warm from Lane 1. Use the dedicated 20-tenant spawn lane for clean cold-start comparisons.
 - Bun Worker cold start scales linearly per isolate (no fork-copy). On a real PaaS where tenants compile their own mutations, the FFI cold-spawn lead widens with tenant count.
 - The pump cost on FFI for async References is per-`await`, not per-call. A handler that awaits five `actions.change` calls will pay ~5× the pump cost; a handler that awaits one will pay ~1×.
+
+## Cold-start shootout — JS sandbox primitives vs the field
+
+Single-isolate cold spawn: `createIsolate()` + `createContext()` + `compileScript('1')` + `run()`. This is what every consumer pays on the first call to a fresh sandbox; the warm path skips all of it.
+
+WSL2, Bun 1.3.14, `@absolutejs/isolated-jsc@0.6.0`, n=25 after a 3-iter warmup.
+
+| Backend | n | median (ms) | p95 (ms) | mean (ms) |
+| --- | --- | --- | --- | --- |
+| isolated-jsc Worker | 25 | 23.8 | 28.5 | 24.7 |
+| **isolated-jsc FFI** | 25 | **2.2** | **4.3** | **3.0** |
+
+For reference, competitor cold-start numbers published by each vendor (cited so you can verify currency):
+
+| Product | Cold spawn | Source |
+| --- | --- | --- |
+| **isolated-jsc FFI** | **~2 ms** | this script |
+| Cloudflare Workers (regular) | ~6 ms (warm-pool DO spawn) | [blog.cloudflare.com](https://blog.cloudflare.com/eliminating-cold-starts-2-shard-and-conquer/) (Sept 2025) |
+| Cloudflare Dynamic Workers | "few ms" (isolate spawn) | [blog.cloudflare.com](https://blog.cloudflare.com/dynamic-workers/) (Apr 2026) |
+| isolated-jsc Worker | ~24 ms (this script) | this script |
+| isolated-vm (Node V8) | ~30 ms (maintainer-cited, structural) | [github.com/laverdet/isolated-vm](https://github.com/laverdet/isolated-vm) |
+| Daytona (paid) | ~90 ms (Docker + pre-warmed) | [rywalker.com](https://rywalker.com/research/ai-agent-sandboxes) |
+| E2B (paid) | ~200 ms (Firecracker microVM) | [superagent.sh benchmark](https://www.superagent.sh/blog/ai-code-sandbox-benchmark-2026) (Apr 2026) |
+| Fly Sprites | seconds pause + ~1s resume | [sprites.dev](https://sprites.dev/) (Jan 2026) |
+| Pyodide (browser WASM) | ~3,000 ms (no built-in caching) | [pyodide#3940](https://github.com/pyodide/pyodide/issues/3940) |
+
+**Picture**: isolated-jsc FFI is in Cloudflare's tier on raw cold spawn (~2 ms vs their ~6 ms), and 40–90× faster than container-based sandboxes (E2B, Daytona). Unlike Cloudflare's, this is an in-process primitive you embed in your own Bun server — no separate service to deploy, no per-call billing, no cold-start tax measured in tenant disconnects. The fallback Worker backend still beats containers handily (~24 ms vs ~90–200 ms).
+
+Reproduce: `bun run bench:cold-start`. The script also runs against `'auto'` to confirm which path the resolver picks on the host's libJSC availability.

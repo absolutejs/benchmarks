@@ -10,6 +10,7 @@
     "bench:zero": "bun run ./scripts/bench-zero.ts",
     "bench:convex": "bun run ./scripts/bench-convex.ts",
     "bench:sandbox": "bun run ./scripts/bench-sandbox.ts",
+    "bench:cold-start": "bun run ./scripts/cold-start-shootout.ts",
     "propagation:sync": "bun run ./scripts/propagation-sync.ts",
     "propagation:sync-cluster": "bun run ./scripts/propagation-sync-cluster.ts",
     "propagation:sync-cluster-pg": "bun run ./scripts/propagation-sync-cluster-pg.ts",
