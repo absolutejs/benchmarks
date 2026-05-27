@@ -1,21 +1,24 @@
 /**
- * Reactive-read bench #3 — reconnect-after-offline replay.
+ * Reactive-read bench #3 — reconnect-after-offline replay (actual catch-up
+ * via `since`, not cold-hydration).
  *
- * Sync ships local-first (IndexedDB cache, offline queue, resume-from-cached-
- * version on reconnect). This bench measures the path that matters for that
- * promise: how long from "subscriber reconnects after the server moved on N
- * versions" to "subscriber is up to date again."
+ * Sync ships resume-via-`since`: client tracks `appliedVersion`, on reconnect
+ * the subscribe carries `since`, and the engine sends a catch-up diff (or a
+ * snapshot if the change log can't cover the gap). This bench measures THAT
+ * path — using `disconnect()` (added in @absolutejs/sync 1.2) so the same
+ * collection's auto-reconnect loop fires and `appliedVersion` is preserved.
  *
- * Methodology:
- *   1. Open a subscriber, let it hydrate fully.
- *   2. Disconnect the subscriber (close socket).
- *   3. Fire K mutations while the subscriber is offline (writer is still
- *      connected).
- *   4. Reconnect the subscriber.
- *   5. Measure time from reconnect to the subscriber seeing the latest value.
+ * Methodology (per iteration):
+ *   1. SAME subscriber stays open across iterations — its appliedVersion is
+ *      preserved between disconnects.
+ *   2. Subscriber `.disconnect()` — closes the WS without losing state.
+ *   3. Fire K mutations from the writer (subscriber is offline).
+ *   4. Auto-reconnect fires; subscribe carries `since: appliedVersion`.
+ *   5. Engine replies with a catch-up diff for the missed (K) changes.
+ *   6. Measure from disconnect-end to subscriber seeing the latest value.
  *
- * Repeat for K = 1, 10, 100 missed writes — does the resume cost scale with
- * the gap, or is the engine's diff-from-version path constant?
+ * Repeat for K = 1, 10, 100 missed writes — the catch-up diff should scale
+ * with K (small), NOT with the table size.
  *
  * Convex and Zero handle reconnect differently (Convex re-runs queries; Zero
  * uses its WS protocol's incremental delivery). Cross-engine comparison is
@@ -111,41 +114,66 @@ const priorityOf = (state: { data: Array<{ priority?: number }> }): number => {
 const writer = createSyncCollection<Row>({ collection: 'tasks', url });
 await waitReady([{ get: () => writer.get().status, label: 'writer' }]);
 
+// ONE subscriber stays open across all iterations so its appliedVersion
+// survives disconnect()s — the resumed subscribe carries `since` and the
+// engine sends a catch-up diff. The old version of this bench used fresh
+// `createSyncCollection`s per iteration (no `since`), which silently
+// measured cold-hydration cost instead of the resume path.
+//
+// reconnectMs is set wide enough that all of an iteration's missed writes
+// land BEFORE the auto-reconnect fires — otherwise we'd accidentally
+// measure "saw writes live" rather than "caught up after reconnect."
+// Each iteration's reported elapsed subtracts the reconnect wait, so what
+// we report is the catch-up cost itself (reconnect → up-to-date), not the
+// backoff window.
+const RECONNECT_MS = 2_000;
+const subscriber = createSyncCollection<Row>({
+	collection: 'tasks',
+	reconnectMs: RECONNECT_MS,
+	url
+});
+await waitReady([{ get: () => subscriber.get().status, label: 'subscriber' }]);
+
 const measureGap = async (missedWrites: number) => {
 	const measured = 10;
 	const samples: number[] = [];
 	const start = performance.now();
 
-	const RECONNECT_TIMEOUT_MS = 15_000;
+	const RECONNECT_TIMEOUT_MS = 30_000;
 	for (let iteration = 0; iteration < measured; iteration += 1) {
-		// Fresh subscriber per iteration so each measurement is a true
-		// reconnect (not a "subscription that was just opened" case).
-		const sub = createSyncCollection<Row>({ collection: 'tasks', url });
-		await waitReady([{ get: () => sub.get().status, label: 'sub' }]);
+		const beforeOffline = priorityOf(subscriber.get());
+		// Close the WS without losing state — auto-reconnect will fire after
+		// RECONNECT_MS and the resumed subscribe will carry `since`.
+		subscriber.disconnect();
+		// Tiny pause so ws.onclose propagates → client.connected = false.
+		await sleep(10);
 
-		const beforeOffline = priorityOf(sub.get());
-		// Disconnect.
-		sub.close();
-		await sleep(50);
-
-		// Fire missedWrites mutations from the writer while offline.
+		// Fire all K missed writes while offline. Writer's separate connection
+		// is unaffected.
 		for (let index = 0; index < missedWrites; index += 1) {
 			await writer.mutate({ args: {}, name: 'bump' });
 		}
 		const expectedAfter = beforeOffline + missedWrites;
 
-		// Reconnect — measure ready→up-to-date.
-		const reconnectStarted = performance.now();
-		const fresh = createSyncCollection<Row>({
-			collection: 'tasks',
-			url
-		});
+		// At this point the writes are done; the subscriber is still offline
+		// (auto-reconnect timer hasn't fired). We want to measure the *catch-up*
+		// — from when the subscriber's reconnect kicks off to when it's
+		// up-to-date — not the artificial backoff window. So we time from
+		// "subscriber goes from `closed` back to `connecting`" (the moment
+		// the new WS starts opening).
+		let catchupStart = 0;
 		let unsubscribe: () => void = () => {};
 		const inner = new Promise<number>((resolve) => {
-			unsubscribe = fresh.subscribe((state) => {
-				if (priorityOf(state) >= expectedAfter) {
+			unsubscribe = subscriber.subscribe((state) => {
+				if (catchupStart === 0 && state.status === 'connecting') {
+					catchupStart = performance.now();
+				}
+				if (
+					catchupStart !== 0 &&
+					priorityOf(state) >= expectedAfter
+				) {
 					unsubscribe();
-					resolve(performance.now() - reconnectStarted);
+					resolve(performance.now() - catchupStart);
 				}
 			});
 		});
@@ -155,10 +183,8 @@ const measureGap = async (missedWrites: number) => {
 			`reconnect catching up to priority=${expectedAfter}`,
 			() => {
 				unsubscribe();
-				fresh.close();
 			}
 		);
-		fresh.close();
 		samples.push(elapsed);
 	}
 
@@ -186,7 +212,7 @@ for (const missed of [1, 10, 100]) {
 }
 
 console.log(
-	'\n## Reconnect-after-offline — fresh subscriber catches up to current\n'
+	'\n## Reconnect-after-offline — catch-up via `since` (sync 1.2+)\n'
 );
 console.log('| missed writes | p50 (ms) | p95 (ms) | max (ms) |');
 console.log('|---|---|---|---|');
@@ -196,6 +222,7 @@ for (const row of results) {
 	);
 }
 
+subscriber.close();
 writer.close();
 void app.stop();
 await sql.end();
