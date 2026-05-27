@@ -19,6 +19,7 @@
     "reactive:fanout": "bun run ./scripts/reactive/subscription-scaling.ts",
     "reactive:hydration": "bun run ./scripts/reactive/cold-hydration.ts",
     "reactive:reconnect": "bun run ./scripts/reactive/reconnect-replay.ts",
+    "reactive:reconnect-correctness": "bun run ./scripts/reactive/reconnect-correctness.ts",
     "reactive:ranged": "bun run ./scripts/reactive/ranged-subscriptions.ts",
     "reactive:ranged-graph": "bun run ./scripts/reactive/ranged-subscriptions-graph.ts",
     "reactive:multi-row-tx": "bun run ./scripts/reactive/multi-row-tx.ts",
@@ -28,7 +29,7 @@
   },
   "dependencies": {
     "@absolutejs/isolated-jsc": "0.6.0",
-    "@absolutejs/sync": "1.7.5",
+    "@absolutejs/sync": "1.7.8",
     "@absolutejs/sync-bus-pg": "^0.0.1",
     "@rocicorp/zero": "^1.5.0",
     "@tanstack/db": "^0.6.7",

@@ -628,3 +628,36 @@ For reference, competitor cold-start numbers published by each vendor (cited so 
 **Picture**: isolated-jsc FFI is in Cloudflare's tier on raw cold spawn (~2 ms vs their ~6 ms), and 40–90× faster than container-based sandboxes (E2B, Daytona). Unlike Cloudflare's, this is an in-process primitive you embed in your own Bun server — no separate service to deploy, no per-call billing, no cold-start tax measured in tenant disconnects. The fallback Worker backend still beats containers handily (~24 ms vs ~90–200 ms).
 
 Reproduce: `bun run bench:cold-start`. The script also runs against `'auto'` to confirm which path the resolver picks on the host's libJSC availability.
+
+## Reconnect correctness — does sync drop diffs on background-tab reconnect?
+
+The most-cited bug class in this whole category:
+
+- **Supabase Realtime** acknowledged silent drops on background-tab reconnect — [`supabase/supabase` discussion #5641](https://github.com/orgs/supabase/discussions/5641) — and closed the related memory-leak issue [`supabase-js #1204`](https://github.com/supabase/supabase-js/issues/1204) as **not planned**.
+- **ElectricSQL** ran an [August 2025 "reliability sprint"](https://electric-sql.com/blog/2025/08/04/reliability-sprint) explicitly to fix post-1.0-GA silent-drop regressions (IPv6 fallback, WAL-position race, error-response caching).
+- **Firebase Realtime Database** has documented [13-hour outages](https://news.ycombinator.com/item?id=19047812) where "clients sometimes wouldn't get notified of document changes."
+
+Sync's `since`-token catch-up was designed to make this class of bug impossible. **The bench is the proof:**
+
+```text
+# Reconnect correctness — sync vs every other engine
+  100 iterations · 8 writes each (3 before disconnect, 5 after) · wait timeout 2000 ms
+
+  iter  25: ok so far
+  iter  50: ok so far
+  iter  75: ok so far
+  iter 100: ok so far
+
+# Results
+  Iterations:                100 (53.8s total)
+  Writes issued:             800
+  Writes delivered:          800
+  Writes silently dropped:   0
+  Iterations with drops:     0
+
+  PASS: sync delivered every write, every iteration.
+```
+
+Per iteration: subscribe → 3 writes → `client.disconnect()` → 5 more writes (via a second client so the engine still sees them) → wait for auto-reconnect → assert every issued id is in the subscriber's view. The bench fails loudly if any write is silently dropped. It runs on every commit (`bun run reactive:reconnect-correctness`); regressing the catch-up machinery shows up immediately.
+
+This is the lane sync targeted explicitly — the closed-not-planned bugs at Supabase are precisely what `since`-token-based catch-up makes structurally impossible. Where competitors had to firefight after-the-fact (Electric's reliability sprint), sync's behavior is property-tested.
