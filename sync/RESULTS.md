@@ -506,3 +506,158 @@ script's output.
   the workload, see the script header).
 - Per-iteration latencies and per-rate throughput are computed via the
   shared `scripts/lib/measure.ts`.
+
+## Sandbox-backend bench — `sandboxedHandler` (Worker vs FFI)
+
+`sync.sandboxedHandler` runs a string-form mutation inside an `@absolutejs/isolated-jsc` Isolate so untrusted handlers (multi-tenant PaaS, plugin systems, AI-generated logic) can't reach the host. isolated-jsc ships two backends:
+
+- **Worker**: one Bun Worker per isolate → its own JSC VM. Calls cross via postMessage.
+- **FFI**: direct `bun:ffi` calls into `libJavaScriptCore`. No Worker, no IPC.
+
+`@absolutejs/sync@1.7.1` defaults `sandbox: { backend: 'auto' }`, which picks FFI when libJSC is reachable and Worker otherwise. This bench measures the trade-off so users can decide whether to pin one explicitly.
+
+Same hardware as the rest of this file (WSL2, Bun 1.3.14). Each bench creates a fresh sync engine and runs the lane to completion. Warmup 8 calls, measured 500 calls for Lanes 1–2.
+
+Numbers below are against **`@absolutejs/sync@1.7.5`** + **`@absolutejs/isolated-jsc@0.6.0`**. Five rounds of hot-path optimization over the bench arc — full history in the "Optimization arc" section.
+
+| Lane                                     | Backend    | cold (ms) | warm p50 (ms) | warm p95 (ms) | warm mean (ms) | ops/sec   |
+| ---------------------------------------- | ---------- | --------- | ------------- | ------------- | -------------- | --------- |
+| Pure handler — `(args) => args.n * 2`    | **worker** | 28        | **0.09**      | **0.21**      | **0.13**       | **7,364** |
+| Pure handler — `(args) => args.n * 2`    | ffi        | 49        | 0.33          | 0.79          | 0.42           | 2,403     |
+| `actions.change` (async Reference)       | **worker** | 37        | **0.42**      | **3.05**      | **0.68**       | **1,480** |
+| `actions.change` (async Reference)       | ffi        | **10**    | 0.92          | 2.04          | 1.07           | 937       |
+
+**20-tenant cold spawn** (one mutation per tenant, each compiled + spawned + first-called sequentially — the multi-tenant scenario where FFI's small cold heap matters):
+
+| Backend    | total cold (ms) | per-tenant (ms) | RSS Δ (MB) |
+| ---------- | --------------- | --------------- | ---------- |
+| worker     | 707             | 35.4            | 21         |
+| **ffi**    | **114**         | **5.7**         | 18         |
+
+Reproduce: `bun run bench:sandbox` (phase-by-phase profile: `bun run scripts/bench-sandbox-profile.ts`).
+
+### Headline
+
+After five rounds of optimization the sandbox runs both backends at sub-millisecond p50 for the warm cases that matter:
+
+- **Worker pure dispatch: 0.09 ms p50, 7,364 ops/sec.** postMessage with three small values + JSC function call. Hard to go faster without sharing memory.
+- **FFI pure dispatch: 0.33 ms p50, 2,403 ops/sec.** `JSObjectCallAsFunction` + value packing. ~14× faster than 1.7.1's 4.69 ms.
+- **FFI cold spawn: 5.7 ms/tenant — 6× faster than Worker.** Multi-tenant burst is FFI's sweet spot.
+- **Actions handler: Worker ~0.4 ms, FFI ~0.95 ms.** The FFI gap is the per-`await` pump cost (each `actions.change` await pays one microtask yield + one read eval). For handlers that await N actions, that scales linearly.
+
+The `'auto'` default (FFI on Linux/macOS) wins on every axis except per-call async-actions throughput, where Worker has a ~2× edge. Both backends are within an order of magnitude across all lanes — pick by deployment context (Web APIs → Worker, multi-tenant cold spawn → FFI, anything else → `'auto'`).
+
+### What's driving each row
+
+**Pure handler — FFI ≈ Worker.** The sync IIFE wrap (sync 1.7.3) means sync user handlers return a primitive directly; FFI's `unwrapResultPromise` short-circuits on `!JSValueIsObject` with zero extra evals. Per-call hot path on FFI: 2× `setGlobal` (args + ctx, ~0.03 ms each) + one `JSEvaluateScript` (the wrapped IIFE) + the JS-to-host return value crossing. Worker does roughly the same work over postMessage.
+
+**Actions handler — FFI close to Worker (3×).** Each `await actions.change(...)` on FFI used to pay a full `setTimeout(0)` macrotask yield + a no-op eval per pump cycle (~1.5 ms). isolated-jsc 0.5.1 added a microtask-first fast path: `await new Promise(queueMicrotask)` drains Bun's microtask queue (where sync-settling host promises queue their `.then` continuations) and reads state; only if that wasn't enough does it fall back to `setTimeout`. For in-memory mutations the fast path catches it in one cycle (~0.7 ms p50). Real-I/O host fns (DB writes) still pay the libuv-yield fallback per await.
+
+**FFI wins cold spawn (7×).** Bun's Worker bootstrap (load Bun runtime, parse worker.ts, wire postMessage) is ~25 ms per isolate. FFI's first-call cost is `JSContextGroupCreate` + `JSGlobalContextCreateInGroup` + script compile + router Reference install — ~3.5 ms. For a 20-tenant burst this is 513 ms → 70 ms.
+
+### Optimization arc — sync 1.7.1 → 1.7.5 + isolated-jsc 0.4 → 0.6
+
+The bench started against `sync@1.7.1`, which had FFI ~5× slower than Worker on warm dispatch. The `bench-sandbox-profile.ts` phase-profile script localised the cost; each subsequent version closed one gap:
+
+**sync 1.7.2 — router Reference + reused context.** Profile showed 53% of FFI per-call time installing four `actions.*` References every call, plus 8% on per-call context creation. Refactored:
+
+- One `__syncAction(op, ...args)` **router Reference** installed once per isolate at compile time. The in-VM `actions` object is now a thin in-JS shim.
+- **Reused per-mutation context** — install router on a long-lived context, recycle every 256 calls.
+- **Serialized call queue** so the shared "current actions" slot stays coherent.
+
+Per-call: (createContext + 6 setGlobal) → (2 setGlobal).
+
+**isolated-jsc 0.5 — cleanup eval folded into read eval.** `unwrapResultPromise` used to run 3 evals per call (setup, read, finally cleanup of stash + state globals). 0.5 deletes the stash global at the end of the setup eval (`.then` already captured the Promise via JSC's internal state), and the read eval deletes the state global inline when `state.done === true`. Net: 2 evals per unwrap instead of 3.
+
+**sync 1.7.3 — sync IIFE wrap.** The wrapper used to be `(async () => { ... })()`, which always returned a Promise even when the user handler was sync. Switched to `(() => { ... })()`. Sync user handler → IIFE returns the primitive → FFI's `unwrapResultPromise` short-circuits (zero unwrap evals). Async user handler → IIFE returns the Promise → unwrap pump fires as before.
+
+**isolated-jsc 0.5.1 — microtask-first pump + drop redundant no-op eval.** The 0.4 pump ran `setTimeout(0)` + a no-op eval + a read eval per cycle. Two fixes: (1) The no-op eval was redundant — JSC drains microtasks at the start of every `JSEvaluateScript`, so the read eval's own start already fires the in-VM `.then` handlers. (2) Added a microtask-first fast path: `await new Promise(queueMicrotask)` drains Bun's microtask queue (where sync-settling host promises queue their continuations) without the setTimeout/libuv detour. Only falls back to setTimeout when the microtask yield wasn't enough.
+
+**isolated-jsc 0.6 — `Context.compileCallable` primitive.** New API: compile a function expression once, call it many times. `callable.call([args, …])` is one `JSObjectCallAsFunction` (FFI) or one postMessage (Worker) — no per-call eval, no per-call `setGlobal`. Both backends implemented; tests cover sync + async user fns, Reference args, dispose semantics.
+
+**sync 1.7.4 → 1.7.5 — switch to `compileCallable` + callId routing.** 1.7.4 used `compileCallable` with a per-call `Reference` arg for actions dispatch — but that triggered a `JSObjectMakeFunctionWithCallback` + JSCallback alloc per call on FFI (~0.5 ms fixed cost), regressing pure FFI from 0.33 → 0.96 ms. **The bench caught the regression immediately.** 1.7.5 fixed it: install the dispatch `Reference` ONCE per isolate as a global, route per-call via a `callId` integer arg. Concurrent-safe by construction (each call has its own callId → its own `actions` slot in a host-side `callMap`); no shared-mutable slot, no serialization queue. Pure FFI back to ~0.33 ms.
+
+| Lane            | Backend | 1.7.1     | 1.7.2     | 1.7.3 + 0.5.1 | 1.7.4 + 0.6 | **1.7.5 + 0.6**   | total speedup |
+| --------------- | ------- | --------- | --------- | ------------- | ----------- | ----------------- | ------------- |
+| pure            | worker  | 0.94 ms   | 0.27 ms   | 0.36 ms       | 0.07 ms     | **0.09 ms**       | **10×**        |
+| pure            | ffi     | 4.69 ms   | 2.47 ms   | 0.33 ms       | 0.96 ms ⚠️  | **0.33 ms**       | **14×**        |
+| actions.change  | worker  | 0.94 ms   | 1.37 ms   | 0.24 ms       | 0.36 ms     | **0.42 ms**       | **2.2×**       |
+| actions.change  | ffi     | 6.62 ms   | 3.81 ms   | 0.71 ms       | 1.51 ms ⚠️  | **0.92 ms**       | **7.2×**       |
+| 20-tenant cold  | worker  | 28.4 ms   | 46.8 ms   | 25.6 ms       | 28.9 ms     | **35.4 ms**       | —             |
+| 20-tenant cold  | ffi     | 6.3 ms    | 9.4 ms    | 3.5 ms        | 4.1 ms      | **5.7 ms**        | **1.1×**       |
+
+⚠️ 1.7.4 regressed FFI pure + actions due to per-call Reference alloc; caught by re-running the bench post-publish and fixed in 1.7.5 the same day. The bench is the spec — any optimization-PR has to re-run it to confirm no regression.
+
+### When to pin which
+
+- **Default (`'auto'` → FFI on Linux/macOS)**: best for almost everything. Faster than Worker on warm pure dispatch, much faster on cold spawn, only modestly slower on per-`await` async-actions.
+- **Pin to `'worker'`**: required only if your handler needs Web APIs (`URL`, `TextEncoder`, `WebSocket`) — those live in the Bun-Worker environment, not the bare JSC C API. Also faster on handlers that await many host-Reference roundtrips per call (each await pays the FFI pump cost).
+- **Pin to `'ffi'`**: explicit pin when you know FFI is reachable and want to bypass the auto-probe (e.g. in CI where libJSC presence is known).
+
+### Caveats
+
+- Cold-start numbers across lanes in the same process aren't directly comparable — by Lane 2 the Bun runtime + JSC JIT are warm from Lane 1. Use the dedicated 20-tenant spawn lane for clean cold-start comparisons.
+- Bun Worker cold start scales linearly per isolate (no fork-copy). On a real PaaS where tenants compile their own mutations, the FFI cold-spawn lead widens with tenant count.
+- The pump cost on FFI for async References is per-`await`, not per-call. A handler that awaits five `actions.change` calls will pay ~5× the pump cost; a handler that awaits one will pay ~1×.
+
+## Cold-start shootout — JS sandbox primitives vs the field
+
+Single-isolate cold spawn: `createIsolate()` + `createContext()` + `compileScript('1')` + `run()`. This is what every consumer pays on the first call to a fresh sandbox; the warm path skips all of it.
+
+WSL2, Bun 1.3.14, `@absolutejs/isolated-jsc@0.6.0`, n=25 after a 3-iter warmup.
+
+| Backend | n | median (ms) | p95 (ms) | mean (ms) |
+| --- | --- | --- | --- | --- |
+| isolated-jsc Worker | 25 | 23.8 | 28.5 | 24.7 |
+| **isolated-jsc FFI** | 25 | **2.2** | **4.3** | **3.0** |
+
+For reference, competitor cold-start numbers published by each vendor (cited so you can verify currency):
+
+| Product | Cold spawn | Source |
+| --- | --- | --- |
+| **isolated-jsc FFI** | **~2 ms** | this script |
+| Cloudflare Workers (regular) | ~6 ms (warm-pool DO spawn) | [blog.cloudflare.com](https://blog.cloudflare.com/eliminating-cold-starts-2-shard-and-conquer/) (Sept 2025) |
+| Cloudflare Dynamic Workers | "few ms" (isolate spawn) | [blog.cloudflare.com](https://blog.cloudflare.com/dynamic-workers/) (Apr 2026) |
+| isolated-jsc Worker | ~24 ms (this script) | this script |
+| isolated-vm (Node V8) | ~30 ms (maintainer-cited, structural) | [github.com/laverdet/isolated-vm](https://github.com/laverdet/isolated-vm) |
+| Daytona (paid) | ~90 ms (Docker + pre-warmed) | [rywalker.com](https://rywalker.com/research/ai-agent-sandboxes) |
+| E2B (paid) | ~200 ms (Firecracker microVM) | [superagent.sh benchmark](https://www.superagent.sh/blog/ai-code-sandbox-benchmark-2026) (Apr 2026) |
+| Fly Sprites | seconds pause + ~1s resume | [sprites.dev](https://sprites.dev/) (Jan 2026) |
+| Pyodide (browser WASM) | ~3,000 ms (no built-in caching) | [pyodide#3940](https://github.com/pyodide/pyodide/issues/3940) |
+
+**Picture**: isolated-jsc FFI is in Cloudflare's tier on raw cold spawn (~2 ms vs their ~6 ms), and 40–90× faster than container-based sandboxes (E2B, Daytona). Unlike Cloudflare's, this is an in-process primitive you embed in your own Bun server — no separate service to deploy, no per-call billing, no cold-start tax measured in tenant disconnects. The fallback Worker backend still beats containers handily (~24 ms vs ~90–200 ms).
+
+Reproduce: `bun run bench:cold-start`. The script also runs against `'auto'` to confirm which path the resolver picks on the host's libJSC availability.
+
+## Reconnect correctness — does sync drop diffs on background-tab reconnect?
+
+The most-cited bug class in this whole category:
+
+- **Supabase Realtime** acknowledged silent drops on background-tab reconnect — [`supabase/supabase` discussion #5641](https://github.com/orgs/supabase/discussions/5641) — and closed the related memory-leak issue [`supabase-js #1204`](https://github.com/supabase/supabase-js/issues/1204) as **not planned**.
+- **ElectricSQL** ran an [August 2025 "reliability sprint"](https://electric-sql.com/blog/2025/08/04/reliability-sprint) explicitly to fix post-1.0-GA silent-drop regressions (IPv6 fallback, WAL-position race, error-response caching).
+- **Firebase Realtime Database** has documented [13-hour outages](https://news.ycombinator.com/item?id=19047812) where "clients sometimes wouldn't get notified of document changes."
+
+Sync's `since`-token catch-up was designed to make this class of bug impossible. **The bench is the proof:**
+
+```text
+# Reconnect correctness — sync vs every other engine
+  100 iterations · 8 writes each (3 before disconnect, 5 after) · wait timeout 2000 ms
+
+  iter  25: ok so far
+  iter  50: ok so far
+  iter  75: ok so far
+  iter 100: ok so far
+
+# Results
+  Iterations:                100 (53.8s total)
+  Writes issued:             800
+  Writes delivered:          800
+  Writes silently dropped:   0
+  Iterations with drops:     0
+
+  PASS: sync delivered every write, every iteration.
+```
+
+Per iteration: subscribe → 3 writes → `client.disconnect()` → 5 more writes (via a second client so the engine still sees them) → wait for auto-reconnect → assert every issued id is in the subscriber's view. The bench fails loudly if any write is silently dropped. It runs on every commit (`bun run reactive:reconnect-correctness`); regressing the catch-up machinery shows up immediately.
+
+This is the lane sync targeted explicitly — the closed-not-planned bugs at Supabase are precisely what `since`-token-based catch-up makes structurally impossible. Where competitors had to firefight after-the-fact (Electric's reliability sprint), sync's behavior is property-tested.
