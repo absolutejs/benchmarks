@@ -9,6 +9,7 @@
     "bench:tanstack": "bun run ./scripts/bench-tanstack.ts",
     "bench:zero": "bun run ./scripts/bench-zero.ts",
     "bench:convex": "bun run ./scripts/bench-convex.ts",
+    "bench:sandbox": "bun run ./scripts/bench-sandbox.ts",
     "propagation:sync": "bun run ./scripts/propagation-sync.ts",
     "propagation:sync-cluster": "bun run ./scripts/propagation-sync-cluster.ts",
     "propagation:sync-cluster-pg": "bun run ./scripts/propagation-sync-cluster-pg.ts",
@@ -25,7 +26,8 @@
     "reactive:subscribe-storm": "bun run ./scripts/reactive/subscribe-storm.ts"
   },
   "dependencies": {
-    "@absolutejs/sync": "^1.3.0",
+    "@absolutejs/isolated-jsc": "0.4.0",
+    "@absolutejs/sync": "1.7.1",
     "@absolutejs/sync-bus-pg": "^0.0.1",
     "@rocicorp/zero": "^1.5.0",
     "@tanstack/db": "^0.6.7",

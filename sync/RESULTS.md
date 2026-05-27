@@ -506,3 +506,54 @@ script's output.
   the workload, see the script header).
 - Per-iteration latencies and per-rate throughput are computed via the
   shared `scripts/lib/measure.ts`.
+
+## Sandbox-backend bench — `sandboxedHandler` (Worker vs FFI)
+
+`sync.sandboxedHandler` runs a string-form mutation inside an `@absolutejs/isolated-jsc` Isolate so untrusted handlers (multi-tenant PaaS, plugin systems, AI-generated logic) can't reach the host. isolated-jsc ships two backends:
+
+- **Worker**: one Bun Worker per isolate → its own JSC VM. Calls cross via postMessage.
+- **FFI**: direct `bun:ffi` calls into `libJavaScriptCore`. No Worker, no IPC.
+
+`@absolutejs/sync@1.7.1` defaults `sandbox: { backend: 'auto' }`, which picks FFI when libJSC is reachable and Worker otherwise. This bench measures the trade-off so users can decide whether to pin one explicitly.
+
+Same hardware as the rest of this file (WSL2, Bun 1.3.14). Each bench creates a fresh sync engine and runs the lane to completion. Warmup 8 calls, measured 500 calls for Lanes 1–2.
+
+| Lane                                     | Backend    | cold (ms) | warm p50 (ms) | warm p95 (ms) | warm mean (ms) | ops/sec |
+| ---------------------------------------- | ---------- | --------- | ------------- | ------------- | -------------- | ------- |
+| Pure handler — `(args) => args.n * 2`    | **worker** | 35        | **0.94**      | 4.31          | **1.34**       | **745** |
+| Pure handler — `(args) => args.n * 2`    | ffi        | **22**    | 4.69          | 7.54          | 5.08           | 197     |
+| `actions.change` (async Reference)       | **worker** | 43        | **0.94**      | 4.64          | **1.33**       | **751** |
+| `actions.change` (async Reference)       | ffi        | **10**    | 6.62          | 10.91         | 7.16           | 140     |
+
+**20-tenant cold spawn** (one mutation per tenant, each compiled + spawned + first-called sequentially — the multi-tenant scenario where FFI's small cold heap matters):
+
+| Backend    | total cold (ms) | per-tenant (ms) | RSS Δ (MB) |
+| ---------- | --------------- | --------------- | ---------- |
+| worker     | 568             | 28.4            | 19         |
+| **ffi**    | **126**         | **6.3**         | 19         |
+
+Reproduce: `bun run bench:sandbox`.
+
+### What's driving each row
+
+**Worker wins warm dispatch (~5–7×) because postMessage to a long-lived worker is cheap.** Once the isolate exists, the per-call work is one structured-clone of `args/ctx`, one postMessage with the wrapped script, and one return clone — round-tripped through libuv. The Bun-Worker hot path is well-optimised.
+
+**FFI loses warm dispatch because every call is synchronous FFI work on the hot path:** create a fresh context (`JSGlobalContextCreateInGroup`), install four `actions.*` References as `JSCallback`s + four `JSObjectSetProperty` calls, evaluate the wrapped script (`JSEvaluateScript`), then run `unwrapResultPromise` (a setup eval + a read eval). That adds up to ~4–7 ms per call — far more than Worker's ~1 ms postMessage round-trip.
+
+**FFI wins cold spawn (~4.5×) because there's no Worker spawn.** Bun's Worker bootstrap (load Bun runtime, parse worker.ts, wire postMessage) is ~25 ms per isolate. FFI's first-call cost is `JSContextGroupCreate` + `JSGlobalContextCreateInGroup` + script compile — ~6 ms. For a 20-tenant burst this is 568 ms → 126 ms.
+
+**`actions.change` works on FFI now (this is the 0.4 fix).** Pre-0.4, the async Reference would throw "Promise that doesn't settle synchronously"; 0.4 added a pump loop (alternate Bun-event-loop yield + JSC microtask drain, bounded by `Script.run`'s `timeout`). The ~6.6 ms FFI p50 is the pump cost (one `setTimeout(0)` + one no-op eval per await).
+
+**RSS deltas tie at 19 MB** — both backends end up holding similar process-wide memory after the 20-tenant burst, with the difference dominated by JIT'd code rather than per-isolate cold heap. The per-isolate _cold heap_ gap (~46 MB worker vs ~300 KB FFI, documented in isolated-jsc) shows up under millions of isolates or under JSC heap profiling, not at this RSS granularity.
+
+### When to pin which
+
+- **Default (`'auto'` → FFI on Linux/macOS)**: best for **bursty multi-tenant** workloads (PaaS per-tenant code, per-user AI-generated logic) where cold spawn dominates and any single isolate sees few calls.
+- **Pin to `'worker'`**: best for **hot-path single-tenant** workloads where one or two sandboxed mutations get hammered. Also required if your handler needs Web APIs (`URL`, `TextEncoder`, `WebSocket`) — those live in the Bun-Worker environment, not the bare JSC C API.
+- **Pin to `'ffi'`**: best for **read-only handlers** (compute a value from `args`/`ctx`, return it, no `actions.*` calls) — gets the ~300 KB cold heap + interrupt-driven CPU timeouts (the isolate survives a `TimeoutError` instead of dying). Skips the multi-tenant Worker-spawn tax even when you only have one tenant.
+
+### Caveats
+
+- Cold-start numbers across lanes in the same process aren't directly comparable — by Lane 2 the Bun runtime + JSC JIT are warm from Lane 1. Use the dedicated 20-tenant spawn lane for clean cold-start comparisons.
+- Bun Worker cold start scales linearly per isolate (no fork-copy). On a real PaaS where tenants compile their own mutations, the gap widens with tenant count.
+- The pump cost on FFI for async References is per-`await`, not per-call. A handler that awaits five `actions.change` calls will pay ~5× the pump cost; a handler that awaits one will pay ~1×.
