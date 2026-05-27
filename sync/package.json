@@ -21,7 +21,7 @@
     "reactive:multi-row-tx": "bun run ./scripts/reactive/multi-row-tx.ts"
   },
   "dependencies": {
-    "@absolutejs/sync": "^1.1.0",
+    "@absolutejs/sync": "^1.2.0",
     "@rocicorp/zero": "^1.5.0",
     "@tanstack/db": "^0.6.7",
     "@tanstack/query-core": "^5.100.14",

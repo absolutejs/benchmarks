@@ -246,24 +246,40 @@ sub-100 ms. At 100k rows you're at ~880 ms — usable for cold opens of large
 workspaces, not snappy. The dominant cost at large sizes is JSON encoding
 the snapshot + a single WS frame; streaming snapshots would cut p95.
 
-### 3. Reconnect-after-offline (`reconnect-replay.ts`)
+### 3. Reconnect-after-offline (`reconnect-replay.ts`) — catch-up via `since`
 
-A subscriber disconnects; the writer fires K mutations while the subscriber
-is offline; the subscriber reconnects (fresh client, no cached version).
+The SAME subscriber stays open across iterations; its `appliedVersion`
+survives `disconnect()` (new in `@absolutejs/sync` 1.2). Each iteration
+disconnects, fires K writes while offline, then auto-reconnect fires and
+the subscribe carries `since: appliedVersion`. The engine replies with a
+catch-up diff (or a snapshot if the change log can't cover the gap).
+Measurement excludes the artificial `reconnectMs` backoff — we time from
+"WS starts reopening (`status: connecting`)" to "subscriber is up to date."
 
-| missed writes | p50 (ms) | p95 (ms) | max (ms) |
-| ------------- | -------- | -------- | -------- |
-| 1             | 5.5      | 9.5      | 10.0     |
-| 10            | 7.0      | 15.7     | 16.8     |
-| 100           | 5.4      | 15.6     | 16.2     |
+| missed writes | catch-up p50 (ms) | p95 (ms) | max (ms) |
+| ------------- | ----------------- | -------- | -------- |
+| 1             | 3.6               | 5.5      | 6.3      |
+| 10            | 6.2               | 7.0      | 7.8      |
+| 100           | 4.2               | 4.4      | 4.4      |
 
-Reconnect cost is **constant** in missed-writes count — the engine sends the
-current snapshot, not a replay of every missed change. Caveat: this also
-means reconnect cost = cold-hydration cost. For a 100k-row workspace,
-"reconnect after offline" is ~880 ms regardless of whether you missed one
-change or a thousand. A real diff-catch-up path (resume from cached version)
-would be much cheaper for the "missed one change" case; today that's a
-roadmap item.
+Catch-up is **bounded** and **independent of missed-writes count** —
+~4–6 ms is essentially "WS handshake + subscribe + one diff frame back."
+The engine builds one diff covering the change log's `(since, now]`
+window and sends it as a single frame; K=100 isn't materially slower than
+K=1. This is the path that makes the local-first promise real: a tab
+that's been backgrounded for an hour reconnects in milliseconds, not by
+re-downloading the workspace.
+
+**Earlier draft of this section was wrong.** The original bench created
+a fresh `createSyncCollection` per iteration, so each "reconnect" was
+actually a cold subscribe with no `since` — and the engine sent a full
+snapshot. The numbers we reported (5.5/7.0/5.4 ms) were cold-hydration
+on the 1-row test table, not catch-up. With a 100k-row table the
+fresh-client path would have been ~880 ms regardless of how many writes
+were missed; the `disconnect()`-based path here stays ~5 ms because it
+ships a diff, not a snapshot. Resume-via-`since` was already shipped on
+both sides; `disconnect()` was just the missing client trigger to
+exercise it cleanly from tests/benches/apps.
 
 ### 4. Ranged subscriptions (`ranged-subscriptions.ts`)
 
@@ -369,8 +385,14 @@ real apps grow into:
   from ~580 ms to ~42 ms (13.8×) by pushing the filter to SQL and routing
   incremental changes through an operator graph. `defineGraphCollection`
   is the recommended pattern for ranged queries over big tables.
-- **Reconnect = cold hydration** today; no diff-catch-up from a saved
-  version.
+- **Reconnect catch-up via `since`** — **already shipped; surfaced in 1.2
+  via `disconnect()`**. The change log + `canResume` + catch-up diff
+  builder were always there server-side, and the client tracked
+  `appliedVersion` since before 1.0; missing was a client-side trigger
+  for an offline blip. The original "reconnect = cold hydration" finding
+  was a bench mismeasurement (fresh client per iteration, no `since`).
+  Catch-up is now ~4–6 ms regardless of missed-writes count (would have
+  been ~880 ms cold-hydration at 100k rows in the original shape).
 - **Multi-row fan-out** — investigated, no engine fix needed. The engine
   already net-merges N row changes into one diff per subscription
   (`applyChangeBatch` + `mergeViewDiffs`) and one WS frame per connection;
