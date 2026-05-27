@@ -26,6 +26,7 @@ import {
 	sql,
 	type Task
 } from './tasks-db';
+import { waitReady } from './lib';
 
 const PORT = 4354;
 
@@ -43,8 +44,11 @@ engine.registerWriter<Row>('tasks', {
 	insert: async (data: Partial<Row> & { rows?: Row[] }) => {
 		// Two modes: batch via .rows, or single via standard insert.
 		if (Array.isArray(data.rows)) {
+			if (data.rows.length === 0) {
+				throw new Error('empty batch passed to multi-row-tx insert');
+			}
 			await insertManyInTx(data.rows);
-
+			// Non-null since we guarded length above.
 			return data.rows[0] as Row;
 		}
 		const row: Row = {
@@ -108,14 +112,10 @@ const round = (value: number, digits = 2) =>
 // A subscriber that exists to make fan-out a real cost, not a no-op.
 const subscriber = createSyncCollection<Row>({ collection: 'tasks', url });
 const writer = createSyncCollection<Row>({ collection: 'tasks', url });
-for (let attempt = 0; attempt < 100; attempt += 1) {
-	if (
-		writer.get().status === 'ready' &&
-		subscriber.get().status === 'ready'
-	)
-		break;
-	await sleep(50);
-}
+await waitReady([
+	{ get: () => writer.get().status, label: 'writer' },
+	{ get: () => subscriber.get().status, label: 'subscriber' }
+]);
 
 const measureBatch = async (batchSize: number) => {
 	// Reset between batch-size runs so the table doesn't grow without bound.

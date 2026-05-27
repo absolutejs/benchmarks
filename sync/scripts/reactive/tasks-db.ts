@@ -155,17 +155,40 @@ export const bumpTask = async (id: string): Promise<Task | null> => {
 };
 
 export const insertTask = async (task: Task): Promise<Task> => {
-	await sql`
+	// RETURNING + upsert with all columns mirrored from EXCLUDED so the
+	// persisted row reflects the input exactly (and the function returns
+	// what the DB actually wrote, not just the input).
+	const rows = await sql<
+		Array<{
+			id: string;
+			title: string;
+			assignee: string;
+			priority: number;
+			done: boolean;
+			created_at: string;
+		}>
+	>`
 		insert into rtasks (id, title, assignee, priority, done, created_at)
 		values (${task.id}, ${task.title}, ${task.assignee}, ${task.priority}, ${task.done}, ${task.createdAt})
 		on conflict (id) do update set
 			title = excluded.title,
 			assignee = excluded.assignee,
 			priority = excluded.priority,
-			done = excluded.done
+			done = excluded.done,
+			created_at = excluded.created_at
+		returning id, title, assignee, priority, done, created_at
 	`;
+	const row = rows[0];
+	if (!row) throw new Error(`insertTask returned no row for id=${task.id}`);
 
-	return task;
+	return {
+		assignee: row.assignee,
+		createdAt: Number(row.created_at),
+		done: row.done,
+		id: row.id,
+		priority: row.priority,
+		title: row.title
+	};
 };
 
 /** Insert N rows in a single transaction — for multi-row-tx throughput bench. */

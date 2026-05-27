@@ -8,7 +8,7 @@
  *
  * Methodology: spin up the sync engine + one Elysia socket, attach N
  * subscriber clients to the `tasks` collection (or a single-row variant for
- * a smaller, more easily-fan-out-able subscription), then fire 50 sequential
+ * a smaller, more easily-fan-out-able subscription), then fire 25 sequential
  * mutations. For each mutation, measure the time from issuing the write to
  * the SLOWEST subscriber receiving the update — that's the user-visible
  * fan-out tail.
@@ -30,6 +30,7 @@ import {
 	readAllTasks,
 	sql
 } from './tasks-db';
+import { withTimeout } from './lib';
 import { computeStats } from '../lib/measure';
 
 const PORT = 4350;
@@ -133,23 +134,37 @@ const measureAtScale = async (subscribers: number) => {
 	const iterations = 25;
 	const tail: number[] = []; // slowest-subscriber latency per iteration
 	const fanoutSum: number[] = []; // total fan-out wallclock per iteration
+	// Cap any single subscriber's wait so one stuck client can't hang the
+	// whole iteration (and therefore the whole bench at large N).
+	const SUBSCRIBER_TIMEOUT_MS = 30_000;
 
 	for (let iteration = 0; iteration < iterations; iteration += 1) {
 		const expected = lastSeen + 1;
+		// Start timing right before the write is dispatched so the
+		// measurement excludes the small per-iteration setup above.
 		const startedAt = performance.now();
 		// Each subscriber resolves when it sees `expected`. We take the max
-		// (slowest-tail) per iteration — that's user-visible.
-		const subscriberReceived = subs.map(
-			(sub) =>
-				new Promise<number>((resolve) => {
-					const unsubscribe = sub.subscribe((state) => {
-						if (priorityOf(state) >= expected) {
-							unsubscribe();
-							resolve(performance.now() - startedAt);
-						}
-					});
-				})
-		);
+		// (slowest-tail) per iteration — that's user-visible. Each promise
+		// is bounded so a stuck subscriber rejects with a clear error
+		// instead of freezing the bench.
+		const subscriberReceived = subs.map((sub) => {
+			let unsubscribe: () => void = () => {};
+			const inner = new Promise<number>((resolve) => {
+				unsubscribe = sub.subscribe((state) => {
+					if (priorityOf(state) >= expected) {
+						unsubscribe();
+						resolve(performance.now() - startedAt);
+					}
+				});
+			});
+
+			return withTimeout(
+				inner,
+				SUBSCRIBER_TIMEOUT_MS,
+				`subscriber waiting for priority=${expected}`,
+				() => unsubscribe()
+			);
+		});
 		await writer.mutate({ args: {}, name: 'bump' });
 		const arrivals = await Promise.all(subscriberReceived);
 		lastSeen = expected;

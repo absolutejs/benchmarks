@@ -21,6 +21,7 @@ import {
 } from '@absolutejs/sync/engine';
 import { createSyncCollection } from '@absolutejs/sync/client';
 import { ensureSchema, readAllTasks, seedTasks, sql } from './tasks-db';
+import { withTimeout } from './lib';
 import { computeStats } from '../lib/measure';
 
 const PORT = 4351;
@@ -55,11 +56,13 @@ const round = (value: number, digits = 2) =>
 		maximumFractionDigits: digits
 	});
 
-const hydrateOnce = (): Promise<number> =>
-	new Promise<number>((resolve) => {
-		const startedAt = performance.now();
-		const sub = createSyncCollection<Row>({ collection: 'tasks', url });
-		const unsubscribe = sub.subscribe((state) => {
+const HYDRATE_TIMEOUT_MS = 30_000;
+const hydrateOnce = (): Promise<number> => {
+	const startedAt = performance.now();
+	const sub = createSyncCollection<Row>({ collection: 'tasks', url });
+	let unsubscribe: () => void = () => {};
+	const inner = new Promise<number>((resolve) => {
+		unsubscribe = sub.subscribe((state) => {
 			if (state.status === 'ready') {
 				const elapsed = performance.now() - startedAt;
 				unsubscribe();
@@ -68,6 +71,12 @@ const hydrateOnce = (): Promise<number> =>
 			}
 		});
 	});
+
+	return withTimeout(inner, HYDRATE_TIMEOUT_MS, 'hydrateOnce', () => {
+		unsubscribe();
+		sub.close();
+	});
+};
 
 const measureAtSize = async (rowCount: number) => {
 	await seedTasks(rowCount);
@@ -121,6 +130,10 @@ for (const row of results) {
 	);
 }
 
-void app.stop();
+try {
+	await app.stop();
+} catch (error) {
+	console.error('app.stop() failed:', error);
+}
 await sql.end();
 process.exit(0);

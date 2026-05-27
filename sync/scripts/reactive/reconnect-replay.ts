@@ -38,6 +38,7 @@ import {
 	readAllTasks,
 	sql
 } from './tasks-db';
+import { waitReady, withTimeout } from './lib';
 import { computeStats } from '../lib/measure';
 
 const PORT = 4352;
@@ -108,24 +109,19 @@ const priorityOf = (state: { data: Array<{ priority?: number }> }): number => {
 };
 
 const writer = createSyncCollection<Row>({ collection: 'tasks', url });
-for (let attempt = 0; attempt < 100; attempt += 1) {
-	if (writer.get().status === 'ready') break;
-	await sleep(50);
-}
+await waitReady([{ get: () => writer.get().status, label: 'writer' }]);
 
 const measureGap = async (missedWrites: number) => {
 	const measured = 10;
 	const samples: number[] = [];
 	const start = performance.now();
 
+	const RECONNECT_TIMEOUT_MS = 15_000;
 	for (let iteration = 0; iteration < measured; iteration += 1) {
 		// Fresh subscriber per iteration so each measurement is a true
 		// reconnect (not a "subscription that was just opened" case).
 		const sub = createSyncCollection<Row>({ collection: 'tasks', url });
-		for (let attempt = 0; attempt < 100; attempt += 1) {
-			if (sub.get().status === 'ready') break;
-			await sleep(50);
-		}
+		await waitReady([{ get: () => sub.get().status, label: 'sub' }]);
 
 		const beforeOffline = priorityOf(sub.get());
 		// Disconnect.
@@ -144,14 +140,24 @@ const measureGap = async (missedWrites: number) => {
 			collection: 'tasks',
 			url
 		});
-		const elapsed = await new Promise<number>((resolve) => {
-			const unsubscribe = fresh.subscribe((state) => {
+		let unsubscribe: () => void = () => {};
+		const inner = new Promise<number>((resolve) => {
+			unsubscribe = fresh.subscribe((state) => {
 				if (priorityOf(state) >= expectedAfter) {
 					unsubscribe();
 					resolve(performance.now() - reconnectStarted);
 				}
 			});
 		});
+		const elapsed = await withTimeout(
+			inner,
+			RECONNECT_TIMEOUT_MS,
+			`reconnect catching up to priority=${expectedAfter}`,
+			() => {
+				unsubscribe();
+				fresh.close();
+			}
+		);
 		fresh.close();
 		samples.push(elapsed);
 	}

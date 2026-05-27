@@ -32,6 +32,7 @@ import {
 	seedTasks,
 	sql
 } from './tasks-db';
+import { waitReady, withTimeout } from './lib';
 import { computeStats } from '../lib/measure';
 
 const PORT = 4353;
@@ -106,15 +107,17 @@ const measureRangedAtSize = async (rowCount: number) => {
 	const coldSamples: number[] = [];
 	const warmupCold = 3;
 	const measuredCold = 10;
-	const runCold = async () =>
-		new Promise<number>((resolve) => {
-			const startedAt = performance.now();
-			const sub = createSyncCollection<Row>({
-				collection: 'tasksByAssignee',
-				params: ASSIGNEE,
-				url
-			});
-			const unsubscribe = sub.subscribe((state) => {
+	const COLD_TIMEOUT_MS = 30_000;
+	const runCold = (): Promise<number> => {
+		const startedAt = performance.now();
+		const sub = createSyncCollection<Row>({
+			collection: 'tasksByAssignee',
+			params: ASSIGNEE,
+			url
+		});
+		let unsubscribe: () => void = () => {};
+		const inner = new Promise<number>((resolve) => {
+			unsubscribe = sub.subscribe((state) => {
 				if (state.status === 'ready') {
 					unsubscribe();
 					sub.close();
@@ -122,6 +125,12 @@ const measureRangedAtSize = async (rowCount: number) => {
 				}
 			});
 		});
+
+		return withTimeout(inner, COLD_TIMEOUT_MS, 'ranged cold subscribe', () => {
+			unsubscribe();
+			sub.close();
+		});
+	};
 	for (let index = 0; index < warmupCold; index += 1) await runCold();
 	for (let index = 0; index < measuredCold; index += 1) {
 		coldSamples.push(await runCold());
@@ -143,20 +152,13 @@ const measureRangedAtSize = async (rowCount: number) => {
 		params: ASSIGNEE,
 		url
 	});
-	for (let attempt = 0; attempt < 200; attempt += 1) {
-		if (
-			subscriber.get().status === 'ready' &&
-			writer.get().status === 'ready'
-		)
-			break;
-		await sleep(50);
-	}
-	if (
-		subscriber.get().status !== 'ready' ||
-		writer.get().status !== 'ready'
-	) {
-		throw new Error('ranged-subs clients never reached ready');
-	}
+	await waitReady(
+		[
+			{ get: () => subscriber.get().status, label: 'subscriber' },
+			{ get: () => writer.get().status, label: 'writer' }
+		],
+		200
+	);
 
 	const matchingId = subscriber.get().data[0]?.id;
 	if (matchingId === undefined) {
@@ -165,13 +167,15 @@ const measureRangedAtSize = async (rowCount: number) => {
 
 	const liveSamples: number[] = [];
 	const measuredLive = 15;
+	const LIVE_TIMEOUT_MS = 30_000;
 	for (let iteration = 0; iteration < measuredLive; iteration += 1) {
 		const before =
 			subscriber.get().data.find((row) => row.id === matchingId)
 				?.priority ?? 0;
 		const startedAt = performance.now();
-		const seen = new Promise<number>((resolve) => {
-			const unsubscribe = subscriber.subscribe((state) => {
+		let unsubscribe: () => void = () => {};
+		const inner = new Promise<number>((resolve) => {
+			unsubscribe = subscriber.subscribe((state) => {
 				const next = state.data.find((row) => row.id === matchingId);
 				if (
 					next !== undefined &&
@@ -183,6 +187,12 @@ const measureRangedAtSize = async (rowCount: number) => {
 				}
 			});
 		});
+		const seen = withTimeout(
+			inner,
+			LIVE_TIMEOUT_MS,
+			`ranged live update id=${matchingId} priority>${before}`,
+			() => unsubscribe()
+		);
 		await writer.mutate({ args: { id: matchingId }, name: 'bumpTask' });
 		liveSamples.push(await seen);
 	}

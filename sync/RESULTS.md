@@ -173,14 +173,16 @@ are up-to-date" wall).
 
 | subscribers | tail p50 (ms) | tail p95 (ms) | tail p99 (ms) |
 | ----------- | ------------- | ------------- | ------------- |
-| 1           | 16.5          | 28.6          | 31.6          |
-| 10          | 43.0          | 50.3          | 55.8          |
-| 100         | 272.3         | 310.2         | 310.9         |
-| 1,000       | 2,691.8       | 3,858.5       | 3,904.9       |
+| 1           | 7.3           | 11.2          | 12.2          |
+| 10          | 28.2          | 32.8          | 37.3          |
+| 100         | 161.4         | 189.6         | 189.9         |
+| 1,000       | 1,645.3       | 2,461.5       | 2,647.1       |
 
-**Honest read: this scales linearly.** Tail latency is roughly 2.7 ms per
+**Honest read: this scales linearly.** Tail latency is roughly 1.6 ms per
 extra subscriber once you're past ~100. At 1,000 subscribers the slowest
-client waits ~2.7 s per write; at 10,000 it would be unusable. The current
+client waits ~1.6 s per write; at 10,000 it would be unusable (run-to-run
+variance is meaningful — a prior run measured 2.7 s at N=1000 on a more
+loaded box — but the shape is unambiguous). The current
 engine fans out serially over each WS connection. Closing this is a real
 engine task: per-query diff sharing (compute the change once for every
 subscriber on the same query+params), parallel WS frame writes, and
@@ -316,4 +318,4 @@ script's output.
 - Warm-up + measured-iteration counts vary by script (each one is sized for
   the workload, see the script header).
 - Per-iteration latencies and per-rate throughput are computed via the
-  shared `lib/measure.ts`.
+  shared `scripts/lib/measure.ts`.
