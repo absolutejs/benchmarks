@@ -17,6 +17,7 @@
     "reactive:hydration": "bun run ./scripts/reactive/cold-hydration.ts",
     "reactive:reconnect": "bun run ./scripts/reactive/reconnect-replay.ts",
     "reactive:ranged": "bun run ./scripts/reactive/ranged-subscriptions.ts",
+    "reactive:ranged-graph": "bun run ./scripts/reactive/ranged-subscriptions-graph.ts",
     "reactive:multi-row-tx": "bun run ./scripts/reactive/multi-row-tx.ts"
   },
   "dependencies": {
