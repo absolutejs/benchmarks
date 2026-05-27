@@ -26,7 +26,7 @@
     "reactive:subscribe-storm": "bun run ./scripts/reactive/subscribe-storm.ts"
   },
   "dependencies": {
-    "@absolutejs/isolated-jsc": "0.5.0",
+    "@absolutejs/isolated-jsc": "0.5.1",
     "@absolutejs/sync": "1.7.3",
     "@absolutejs/sync-bus-pg": "^0.0.1",
     "@rocicorp/zero": "^1.5.0",

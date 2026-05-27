@@ -5,7 +5,7 @@
     "": {
       "name": "@absolutejs/sync-benchmarks",
       "dependencies": {
-        "@absolutejs/isolated-jsc": "0.5.0",
+        "@absolutejs/isolated-jsc": "0.5.1",
         "@absolutejs/sync": "1.7.3",
         "@absolutejs/sync-bus-pg": "^0.0.1",
         "@rocicorp/zero": "^1.5.0",
@@ -28,7 +28,7 @@
     "protobufjs",
   ],
   "packages": {
-    "@absolutejs/isolated-jsc": ["@absolutejs/isolated-jsc@0.5.0", "", { "peerDependencies": { "bun-types": ">= 1.3.0" } }, "sha512-jtSmncm9apWSChqVPcVe098HfiX7HzKFQua4VF+xm0S3oj4aZ8pL8Itz4jAZ5DebXExTYdRlLM37xAYA/zee6A=="],
+    "@absolutejs/isolated-jsc": ["@absolutejs/isolated-jsc@0.5.1", "", { "peerDependencies": { "bun-types": ">= 1.3.0" } }, "sha512-98EE6pCRlkGLhQFabe2j/nKXZWqdhQQQuHtqYDLbdnugOHJx+rY1pEBrLPPl5NXNSZr91Pr9ZLvP7dXaIO5OBA=="],
 
     "@absolutejs/sync": ["@absolutejs/sync@1.7.3", "", { "peerDependencies": { "@absolutejs/isolated-jsc": ">= 0.5.0", "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@absolutejs/isolated-jsc", "@angular/core", "@elysiajs/cron", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-X5tpSK22hX7JvyFQ2twICsQrvra8ClL0h3TJeceiKcb8LOfNHMz6xaZEiqErPg8gqLbKgvqobS0J/8pUZwj7FQ=="],
 
