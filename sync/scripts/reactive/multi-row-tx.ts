@@ -81,7 +81,7 @@ engine.registerReactive(
 );
 engine.registerMutation(
 	defineMutation({
-		handler: (args: { batchSize: number }, _ctx, actions) => {
+		handler: async (args: { batchSize: number }, _ctx, actions) => {
 			const rows: Row[] = Array.from(
 				{ length: args.batchSize },
 				(_, index) => ({
@@ -93,8 +93,19 @@ engine.registerMutation(
 					title: `batch ${index}`
 				})
 			);
+			// Persist all N rows in one Postgres transaction…
+			await insertManyInTx(rows);
+			// …and emit one change per row through the engine. They're buffered
+			// inside this mutation handler and committed as ONE
+			// applyChangeBatch, so subscribers see one net-merged diff (with
+			// all N rows in `added`) — that's the actual fan-out cost we want
+			// to measure, not the bad earlier shape where the writer's insert
+			// returned only 1-of-N to the engine.
+			for (const row of rows) {
+				await actions.change<Row>('tasks', { op: 'insert', row });
+			}
 
-			return actions.insert<Row>('tasks', { rows });
+			return rows[0];
 		},
 		name: 'insertBatch'
 	})
