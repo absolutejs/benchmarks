@@ -19,7 +19,9 @@
     "reactive:reconnect": "bun run ./scripts/reactive/reconnect-replay.ts",
     "reactive:ranged": "bun run ./scripts/reactive/ranged-subscriptions.ts",
     "reactive:ranged-graph": "bun run ./scripts/reactive/ranged-subscriptions-graph.ts",
-    "reactive:multi-row-tx": "bun run ./scripts/reactive/multi-row-tx.ts"
+    "reactive:multi-row-tx": "bun run ./scripts/reactive/multi-row-tx.ts",
+    "reactive:wire-bytes-sync": "bun run ./scripts/reactive/wire-bytes-sync.ts",
+    "reactive:wire-bytes-convex": "bun run ./scripts/reactive/wire-bytes-convex.ts"
   },
   "dependencies": {
     "@absolutejs/sync": "^1.2.0",

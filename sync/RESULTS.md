@@ -182,6 +182,50 @@ fabricated number would be worse than the gap. Re-run after Zero v1.6 / the
 cookie-auth migration is a queued item (`scripts/propagation-zero.ts` is in
 the repo and ready).
 
+## Wire bandwidth — sync diff frames vs Convex full-result frames
+
+Both engines push updates to subscribers over WebSocket on change. The
+**wire format** is the difference: sync's `applyChangeBatch` produces a
+`diff` frame with `{ added, removed, changed }` arrays — only the rows that
+actually moved. Convex pushes the **whole new query result** on every
+change, per their own [GitHub #95](https://github.com/get-convex/convex-backend/issues/95)
+and the [object-sync-engine roadmap](https://stack.convex.dev/object-sync-engine)
+admission. The bandwidth gap scales with K (rows held by the subscriber).
+
+Workload (`scripts/reactive/wire-bytes-{sync,convex}.ts`): subscribe to a
+query holding K rows, wrap the WS to count inbound bytes, fire 25
+single-row mutations, divide. Per-write inbound bytes:
+
+| K rows held | sync (diff frame) | Convex (full-result frame) | ratio |
+| ----------- | ----------------- | -------------------------- | ----- |
+| 100         | **117 B**         | 11,547 B                   | **99×**    |
+| 1,000       | **118 B**         | 113,905 B                  | **965×**   |
+| 5,000       | **118 B**         | 576,830 B                  | **4,888×** |
+
+Sync stays **flat at ~118 bytes per write regardless of K** — the diff
+frame for one changed row is constant. Convex grows **linearly in K**: at
+5,000 rows held, every single-row mutation sends ~577 KB to every
+subscriber. Multiply that by N subscribers and the bandwidth bill scales as
+N × K × per-row-bytes, not N × per-change-bytes. That's the structural
+reason Convex's own GitHub issue documents users hitting 1 GB bandwidth in
+dev with a 5 MB database.
+
+Hard limits we hit while building the bench, both from Convex's [Limits
+docs](https://docs.convex.dev/production/state/limits):
+
+- **Array return values cap at 8,192 entries.** Bench capped at K=5000 to
+  stay under. Sync has no equivalent limit (caps are PG-bound, effectively
+  unbounded for these sizes).
+- **Single-function reads cap at 4,096 rows scanned.** A naïve "delete all
+  + reseed" mutation breaches it once the table is over the cap. The
+  Convex bench paginates purge + seed into 1,000-row chunks; sync just
+  runs `truncate + insert ${rows}`.
+
+What this means for production: a Convex app subscribing to a list with K
+rows costs O(N·K) bytes on every write to that list. A sync app costs
+O(N·changed_rows). At list-of-5,000 scale the difference is roughly the
+same as serving every list page as a JPEG vs as a `Set-Cookie` header.
+
 ## Reactive-read scaling — the half the counter bench didn't measure
 
 Counter-style benches measure floor (write round-trip, propagation). They don't
