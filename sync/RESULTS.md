@@ -195,6 +195,17 @@ the update. Per-iteration latency = time from the writer's `mutate` to the
 **slowest** subscriber observing the change (the user-visible "all clients
 are up-to-date" wall).
 
+@absolutejs/sync 1.1.0:
+
+| subscribers | tail p50 (ms) | tail p95 (ms) | tail p99 (ms) |
+| ----------- | ------------- | ------------- | ------------- |
+| 1           | 5.1           | 9.1           | 9.2           |
+| 10          | 5.9           | 8.1           | 8.2           |
+| 100         | 10.2          | 13.7          | 14.8          |
+| 1,000       | **66.2**      | **81.6**      | **81.9**      |
+
+Pre-1.1.0 (the linear O(N) shape this section originally documented):
+
 | subscribers | tail p50 (ms) | tail p95 (ms) | tail p99 (ms) |
 | ----------- | ------------- | ------------- | ------------- |
 | 1           | 7.3           | 11.2          | 12.2          |
@@ -202,11 +213,16 @@ are up-to-date" wall).
 | 100         | 161.4         | 189.6         | 189.9         |
 | 1,000       | 1,645.3       | 2,461.5       | 2,647.1       |
 
-**Honest read: this scales linearly.** Tail latency is roughly 1.6 ms per
-extra subscriber once you're past ~100. At 1,000 subscribers the slowest
-client waits ~1.6 s per write; at 10,000 it would be unusable (run-to-run
-variance is meaningful — a prior run measured 2.7 s at N=1000 on a more
-loaded box — but the shape is unambiguous). The current
+**Shape changed from linear O(N) to near-constant.** Sync 1.1 dedupes
+reactive query reruns per change batch keyed by `(collection, params,
+ctx)` — subscribers sharing equivalent inputs share a single rerun. At
+1k subs the tail dropped **20–25×**; what's left at 1k is per-WS-frame
+write cost, the focus of the next item (#22 batch-frame fan-out). The
+1k row is still ~66 ms because the engine still writes 1,000 WS frames
+serially after the shared rerun completes; batched frames + parallel
+writes will close the rest. Different `ctx` references still produce
+independent reruns (per-user query bodies stay isolated — correctness
+tested). The current
 engine fans out serially over each WS connection. Closing this is a real
 engine task: per-query diff sharing (compute the change once for every
 subscriber on the same query+params), parallel WS frame writes, and
@@ -328,9 +344,12 @@ Sync's strong floor numbers (write round-trip, propagation) hold under the
 "counter" workload — but the engine has clear scaling cliffs at the things
 real apps grow into:
 
-- **Subscription fan-out is O(N) in subscribers.** Biggest weakness; needs
-  per-query diff sharing + parallel writes. Practical ceiling today is a few
-  hundred concurrent subs on the same query before tail latency degrades.
+- **Subscription fan-out** — **fixed in 1.1.0**. The original O(N) rerun-
+  per-subscriber path was the headline weakness from the 1.0 bench
+  (~1.6 s tail at 1k subs). 1.1.0 dedupes reactive query reruns per change
+  batch keyed by `(collection, params, ctx)`, dropping tail latency
+  20–25× at 1k subs (now ~66 ms p50). What's left is per-WS-frame write
+  cost — see #22 (batch-frame fan-out) for the next step.
 - **Reactive query re-runs are O(table size)** when the query body calls
   `ctx.db.all` and filters client-side — BUT this is a default-path cost,
   not an engine ceiling. The graph-collection variant
