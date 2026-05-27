@@ -106,6 +106,30 @@ write throughput.
 > "in-process library + your own DB beats hosted/multi-hop on these specific
 > workloads," not "we crush them."
 
+## On DX parity (the "Convex generates an `api`" thing)
+
+A common follow-up: *"Convex generates a typed `api` object from your
+functions — does sync have that?"* Yes, via a different stack:
+
+- Sync ships `hydrateRoute(engine, collection, auth)` + `mutateRoute(engine,
+  mutation, auth)` (in `@absolutejs/sync/engine`) that turn engine pieces
+  into ordinary Elysia routes with TypeBox schemas.
+- Client side: `treaty<typeof app>('localhost:3000')` from `@elysiajs/eden`
+  gives a fully-typed client — args and return values flow from the route
+  signatures, no codegen step. `syncStore({ hydrate: () => api.x.get(),
+  mutate: a => api.y.post(a), diffs: {...} })` then layers optimism,
+  reconnect, and offline on top of those Eden calls. Row + result types are
+  inferred end-to-end.
+- `@elysiajs/openapi` (with Scalar UI) is auto-mounted by `@absolutejs/
+  absolute` in dev by default — so `/openapi` is live for every route the
+  Elysia app declares, including the sync hydrate/mutate ones, without
+  configuration.
+
+The spec lives at [`@absolutejs/sync/docs/eden-typed-sync.md`](https://github.com/absolutejs/sync/blob/main/docs/eden-typed-sync.md).
+Equivalent DX to Convex's `api` codegen, different machinery — Eden + TypeBox
+do the typing where Convex has its own codegen step. Either way, the call
+site is fully typed.
+
 ## Propagation latency — write → remote-subscriber-receive
 
 The write-roundtrip table above is "writer issues mutation → server acks." It's
