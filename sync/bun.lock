@@ -6,6 +6,7 @@
       "name": "@absolutejs/sync-benchmarks",
       "dependencies": {
         "@absolutejs/sync": "^1.2.0",
+        "@absolutejs/sync-bus-pg": "^0.0.1",
         "@rocicorp/zero": "^1.5.0",
         "@tanstack/db": "^0.6.7",
         "@tanstack/query-core": "^5.100.14",
@@ -27,6 +28,8 @@
   ],
   "packages": {
     "@absolutejs/sync": ["@absolutejs/sync@1.2.0", "", { "peerDependencies": { "@angular/core": ">= 21.0.0", "@elysiajs/cron": ">= 1.4.0", "drizzle-orm": ">= 0.44.0", "elysia": ">= 1.4.26", "react": ">= 19.0.0", "svelte": ">= 5.0.0", "vue": ">= 3.5.0" }, "optionalPeers": ["@angular/core", "@elysiajs/cron", "drizzle-orm", "elysia", "react", "svelte", "vue"] }, "sha512-HIXAhQDoQL8tPrfzA7v/P7Ttbf6NmpalcTEh4B4oNpqr9J3agoS8RNWLWNr12ErWTEeNGc+8cbFX3yhELMN42g=="],
+
+    "@absolutejs/sync-bus-pg": ["@absolutejs/sync-bus-pg@0.0.1", "", { "peerDependencies": { "@absolutejs/sync": ">= 1.0.0", "postgres": "^3.0.0" } }, "sha512-mYnM8QofXOtPnI0O7lqJYyUF6K/UlqmH2Yf8PwQNnfImJBNMBhQojIKtMr/BaTmIKs6GR0h761XhZDdzzfIajg=="],
 
     "@badrap/valita": ["@badrap/valita@0.3.11", "", {}, "sha512-oak0W8bycFjnrLeVCVvZqkOWTGh74wCPKUxGLJyhRukRs+V/hQdfZp1eDcQE4Gf3UrtJWfR/Ou4Xe0DZqJZ2FA=="],
 

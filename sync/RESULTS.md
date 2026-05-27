@@ -143,6 +143,7 @@ the new `n`.
 | ---------------------- | ------------------------------------------- | ----- | -------- | -------- | ------- | ------- |
 | **@absolutejs/sync**   | single engine, local (WS + PG)              | 5.3   | **11.0** | **15.8** | 23.3    | 11.2    |
 | **@absolutejs/sync**   | 2-engine cluster, in-memory bus, local      | 3.3   | **6.2**  | **11.1** | 14.0    | 6.8     |
+| **@absolutejs/sync**   | 2-engine cluster, **PG-NOTIFY bus**, local  | 5.9   | **11.8** | **17.6** | 24.4    | 12.2    |
 | Convex                 | self-hosted, loopback Docker                | 13.9  | 19.8     | 28.5     | 36.8    | 20.6    |
 | Convex                 | cloud (HTTPS)                               | 60.8  | 69.4     | 86.9     | 105.6   | 72.0    |
 | Zero                   | local (zero-cache)                          | —     | —        | —        | —       | —       |
@@ -154,19 +155,22 @@ over its own write-ack: their reactive subscriber notification path is a
 second HTTP/WS hop, but it's local. Cloud Convex's ~17 ms over write-ack is
 that same hop carrying across the internet.
 
-**Cluster mode adds essentially zero overhead.** Sync ships a `ClusterBus`
-seam (you bring Redis / PG-NOTIFY / NATS) for horizontal scale. The 2-engine
-row above measures cross-instance propagation over the bundled in-memory bus
-(writer's mutation on engine A → engine B's subscriber). It came in at p50
-6.2 ms vs the single-engine 11.0 ms — those numbers are from different runs
-and reflect run-to-run system-load variance (~±5 ms is typical), not a
-cluster speed-up; the honest read is "cluster fan-out is in the same
-order of magnitude as single-engine," not "cluster is faster." A real
-bus (PG-NOTIFY or Redis) would add the bus's own latency on top — typically
-~1–3 ms LAN. First-party bus adapters are a v1.x roadmap item; today the seam
-works but you wire your own publish/subscribe. Caveat: per-instance version
-cursors mean a client that reconnects to a *different* instance falls back to
-a full snapshot (correct, not catch-up diff). Use sticky sessions.
+**Cluster mode** ships a `ClusterBus` seam for horizontal scale; two first-
+party rows above measure it. The in-memory bus is the floor (same process,
+same tick — same order of magnitude as single-engine). The **PG-NOTIFY bus**
+(`@absolutejs/sync-bus-pg`, published v0.0.1) adds **~5–6 ms** for the
+actual cross-process NOTIFY round-trip: p50 11.8 ms vs 6.2 ms in-memory,
+p95 17.6 ms vs 11.1 ms. That's the real production cost of horizontal scale
+without adding Redis to your stack — your existing Postgres carries the
+change feed. The 8000-byte NOTIFY payload limit is handled cleanly inside
+the bus (small messages inline; oversized batches spill to a
+`sync_cluster_spill` table + a vacuum API). Redis or NATS implementations
+would land at similar latencies — pick the bus your stack already uses.
+
+Caveat: per-instance version cursors mean a client that reconnects to a
+*different* instance falls back to a fresh snapshot (correct, not catch-up
+diff). Use sticky sessions if cross-instance reconnect-as-diff matters; or
+accept the cold-hydration cost on cross-instance reconnect.
 
 **Zero is unmeasured here, honestly.** v1.5 deprecates the old
 `definePermissions` model and points at cookie-based auth; with
