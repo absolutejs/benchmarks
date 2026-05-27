@@ -322,21 +322,29 @@ big tables, `defineGraphCollection` is the recommended pattern.
 
 The shared-counter bench writes one row per commit. Real workloads commit
 many. This measures sequential awaited commits at varying batch sizes,
-with one subscriber attached so fan-out is a real cost.
+with one subscriber attached so fan-out is a real cost. The mutation
+handler emits one `actions.change` per row inside one mutation, so the
+engine commits all of them as one `applyChangeBatch` and the subscriber
+receives a single net-merged `diff` frame with all rows in `added`.
 
 | rows / commit | commits/sec | rows/sec |
 | ------------- | ----------- | -------- |
-| 1             | 46          | 46       |
-| 10            | 50          | 496      |
-| 100           | 26          | 2,630    |
-| 1,000         | 5           | 5,393    |
+| 1             | 62          | 62       |
+| 10            | 49          | 490      |
+| 100           | 26          | 2,648    |
+| 1,000         | 6           | 6,111    |
 
-Commits/sec is roughly constant for small batches (PG transaction overhead
-amortises), then drops as the per-commit fan-out cost (subscriber gets N row
-diffs per commit, sent as N WS frames today) starts to dominate. At
-batch=1000 you're moving ~5,400 rows/sec — adequate, not impressive.
-Batch-framed fan-out (one WS frame per batch, not per row) would close most
-of this gap.
+The ceiling here is **PG transaction commit time**, not engine fan-out.
+At batch=1000 each commit takes ~165 ms — dominated by the `insert into
+... values (...) ... (1000 rows)` planning + fsync. The engine's
+contribution per commit is a single net-merged diff per subscription
+(`applyChangeBatch` merges N row diffs into one via `mergeViewDiffs`)
+plus one WS `diff` frame per connection. An earlier draft of this
+section blamed fan-out for the drop at batch=1000 — measurement was
+mis-shaped: the writer was returning only 1-of-N rows to the engine,
+so the engine fanned out one row, not a thousand. Corrected mutation
+handler now emits all N changes, and the numbers barely moved (5 → 6
+commits/sec) — confirming PG, not fan-out, was the ceiling all along.
 
 ### What this section shows
 
@@ -348,8 +356,11 @@ real apps grow into:
   per-subscriber path was the headline weakness from the 1.0 bench
   (~1.6 s tail at 1k subs). 1.1.0 dedupes reactive query reruns per change
   batch keyed by `(collection, params, ctx)`, dropping tail latency
-  20–25× at 1k subs (now ~66 ms p50). What's left is per-WS-frame write
-  cost — see #22 (batch-frame fan-out) for the next step.
+  20–25× at 1k subs (now ~66 ms p50). What's left at 1k subs is the
+  irreducible cost of N synchronous `ws.send` calls to N different
+  sockets (microseconds × 1000 ≈ tens of ms). Bun's WS API is
+  synchronous so there's no parallelism to gain via `Promise.all`; the
+  per-frame work is already minimal.
 - **Reactive query re-runs are O(table size)** when the query body calls
   `ctx.db.all` and filters client-side — BUT this is a default-path cost,
   not an engine ceiling. The graph-collection variant
@@ -360,8 +371,11 @@ real apps grow into:
   is the recommended pattern for ranged queries over big tables.
 - **Reconnect = cold hydration** today; no diff-catch-up from a saved
   version.
-- **Fan-out cost per change set is per-row.** Batch-framing the WS payload
-  would help large-batch throughput.
+- **Multi-row fan-out** — investigated, no engine fix needed. The engine
+  already net-merges N row changes into one diff per subscription
+  (`applyChangeBatch` + `mergeViewDiffs`) and one WS frame per connection;
+  the multi-row-tx ceiling is PG transaction commit time, not engine
+  fan-out (the bench was originally mis-shaped — see section 5).
 
 These are the real engineering items to take on if "beat Convex at their
 game" is the goal. The counter benches above already show sync wins on
