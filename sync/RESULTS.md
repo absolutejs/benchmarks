@@ -269,8 +269,38 @@ a single mutation to one matching row costs ~580 ms to propagate, because
 the engine re-scans the entire table to recompute the filter result. **This
 is the cost the user pays for not pushing the filter to SQL.** Sync ships
 `defineGraphCollection` for incremental operator-graph queries (true
-push-down + delta maintenance); a follow-up will measure that path and
-compare.
+push-down + delta maintenance) — measured next.
+
+### 4b. Ranged subscriptions via `defineGraphCollection` (`ranged-subscriptions-graph.ts`)
+
+The same workload as 4, but wired through sync's incremental operator
+graph instead of a reactive query. The source's `hydrate` pushes the
+filter to SQL (`select ... where assignee = ?`), and incremental
+changes are routed through `match` so the graph only sees rows that
+belong to this subscriber's view. The `orderBy` operator maintains
+a sorted result incrementally.
+
+| rows in table | cold p50 (ms) | cold p95 (ms) | live update p50 (ms) | live update p95 (ms) |
+| ------------- | ------------- | ------------- | -------------------- | -------------------- |
+| 1,000         | 14.5          | 18.2          | **10.5**             | 16.1                 |
+| 10,000        | 34.4          | 40.0          | **16.6**             | 21.7                 |
+| 100,000       | 116.0         | 123.9         | **41.8**             | 54.4                 |
+
+**This kills the O(table size) cliff.** Direct comparison vs 4:
+
+| rows    | cold (reactive) | cold (graph) | speedup | live (reactive) | live (graph) | speedup    |
+| ------- | --------------- | ------------ | ------- | --------------- | ------------ | ---------- |
+| 1,000   | 11.1            | 14.5         | ~same   | 21.8            | 10.5         | 2.1×       |
+| 10,000  | 42.9            | 34.4         | 1.25×   | 72.5            | 16.6         | 4.4×       |
+| 100,000 | 313.4           | 116.0        | 2.7×    | 577.9           | **41.8**     | **13.8×**  |
+
+At 100k rows, live-update latency goes from ~580 ms (default reactive
+query) to ~42 ms — and that 42 ms is essentially "WS round-trip + the
+PG `update` + diff frame to the subscriber"; the rest of the 100k-row
+table is untouched because the operator graph only routes the single
+changed row through this subscriber's pipeline. The cliff is **not**
+an engine ceiling; it's a default-path cost. For ranged queries over
+big tables, `defineGraphCollection` is the recommended pattern.
 
 ### 5. Multi-row transaction throughput (`multi-row-tx.ts`)
 
@@ -302,8 +332,12 @@ real apps grow into:
   per-query diff sharing + parallel writes. Practical ceiling today is a few
   hundred concurrent subs on the same query before tail latency degrades.
 - **Reactive query re-runs are O(table size)** when the query body calls
-  `ctx.db.all` and filters client-side. Push-down to SQL (or to the
-  `defineGraphCollection` operator graph) keeps queries bounded.
+  `ctx.db.all` and filters client-side — BUT this is a default-path cost,
+  not an engine ceiling. The graph-collection variant (`ranged-subs-graph`)
+  drops live-update latency at 100k rows from ~580 ms to ~42 ms (13.8×) by
+  pushing the filter to SQL and routing incremental changes through an
+  operator graph. `defineGraphCollection` is the recommended pattern for
+  ranged queries over big tables.
 - **Reconnect = cold hydration** today; no diff-catch-up from a saved
   version.
 - **Fan-out cost per change set is per-row.** Batch-framing the WS payload
