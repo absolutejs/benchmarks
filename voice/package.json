@@ -57,6 +57,7 @@
     "bench:deepgram:flux": "DEEPGRAM_MODEL=flux-general-en bun run ./scripts/benchmark-stt.ts deepgram",
     "bench:deepgram:hybrid:sessions": "bun run ./scripts/benchmark-session.ts deepgram-hybrid",
     "bench:deepgram:jargon": "bun run ./scripts/benchmark-stt.ts deepgram jargon",
+    "bench:intake:accuracy": "DEEPGRAM_MODEL=flux-general-en bun run ./scripts/benchmark-stt.ts deepgram jargon && bun run ./scripts/benchmark-stt.ts openai jargon",
     "bench:deepgram:multi-speaker": "bun run ./scripts/benchmark-stt.ts deepgram multi-speaker",
     "bench:deepgram:multi-speaker:clean": "bun run ./scripts/benchmark-stt.ts deepgram multi-speaker-clean",
     "bench:deepgram:multi-speaker:debug": "bun run ./scripts/run-multi-speaker-debug.ts",
@@ -152,9 +153,9 @@
     "corpus:multilingual": "bun run ./scripts/build-multilingual-corpus.ts"
   },
   "dependencies": {
-    "@absolutejs/voice": "0.0.22-beta.534",
+    "@absolutejs/voice": "0.0.22-beta.634",
     "@absolutejs/voice-assemblyai": "0.0.19-beta.123",
-    "@absolutejs/voice-deepgram": "0.0.20-beta.93",
+    "@absolutejs/voice-deepgram": "0.0.20-beta.101",
     "@absolutejs/voice-elevenlabs": "0.0.19",
     "@absolutejs/voice-openai": "0.0.7-beta.40"
   },

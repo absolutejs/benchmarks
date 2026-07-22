@@ -4,6 +4,11 @@ Performance & accuracy benchmarks for [`@absolutejs/voice`](https://github.com/a
 
 These consume the **published** `@absolutejs/voice` package and provider adapters, so they double as a real-world consumer of the public API.
 
+For intake transcription, run `bun run bench:intake:accuracy`. It compares
+Deepgram Flux with OpenAI on the domain-heavy fixture set and reports both WER
+and expected-term recall, so a provider cannot pass by getting filler words right
+while missing the names and phrases that populate durable profile fields.
+
 ## Setup
 
 ```bash
