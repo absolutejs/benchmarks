@@ -153,7 +153,7 @@
     "corpus:multilingual": "bun run ./scripts/build-multilingual-corpus.ts"
   },
   "dependencies": {
-    "@absolutejs/voice": "0.0.22-beta.634",
+    "@absolutejs/voice": "0.0.22-beta.635",
     "@absolutejs/voice-assemblyai": "0.0.19-beta.123",
     "@absolutejs/voice-deepgram": "0.0.20-beta.101",
     "@absolutejs/voice-elevenlabs": "0.0.19",
