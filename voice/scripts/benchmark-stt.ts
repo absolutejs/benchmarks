@@ -17,6 +17,7 @@ import {
   runSTTAdapterBenchmark,
   runSTTAdapterBenchmarkSeries,
   summarizeSTTBenchmarkSeries,
+  type VoiceBenchmarkPromptTrack,
   type VoiceSTTBenchmarkReport,
 } from "@absolutejs/voice/testing";
 import type {
@@ -90,6 +91,31 @@ type VoiceBenchmarkProfile =
   | "multi-speaker-clean"
   | "multi-speaker-noisy"
   | "telephony";
+
+const resolvePromptTrack = (): VoiceBenchmarkPromptTrack => {
+  const trackIndex = process.argv.indexOf("--track");
+  const requested = process.argv[trackIndex + 1];
+  if (
+    requested === "unprompted" ||
+    requested === "production-context" ||
+    requested === "oracle-seeded"
+  ) {
+    return requested;
+  }
+  return process.argv.some((entry) => entry.includes("corrected"))
+    ? "oracle-seeded"
+    : "production-context";
+};
+
+const PROMPT_TRACK = resolvePromptTrack();
+
+const annotateBenchmarkOutput = <T extends object>(output: T) => ({
+  ...output,
+  benchmarkMethodology: {
+    promptTrack: PROMPT_TRACK,
+    referenceDerivedHints: PROMPT_TRACK === "oracle-seeded",
+  },
+});
 
 const toUint8Array = (audio: AudioChunk): Uint8Array =>
   audio instanceof ArrayBuffer
@@ -461,7 +487,7 @@ const buildBenchmarkLexicon =
     tags?: string[];
   }) => VoiceLexiconEntry[] | undefined) =>
   (fixture) => {
-    if (!isCodeSwitchProfile(profile)) {
+    if (!isCodeSwitchProfile(profile) || PROMPT_TRACK !== "oracle-seeded") {
       return undefined;
     }
 
@@ -478,7 +504,7 @@ const buildBenchmarkPhraseHints =
     language?: string;
   }) => VoicePhraseHint[] | undefined) =>
   (fixture) => {
-    if (!isCodeSwitchProfile(profile)) {
+    if (!isCodeSwitchProfile(profile) || PROMPT_TRACK !== "oracle-seeded") {
       return undefined;
     }
 
@@ -533,7 +559,8 @@ const buildOpenAIBenchmarkConfig = (
     (process.env.OPENAI_RESPONSE_MODE as "text" | "audio" | undefined) ??
     "text";
   const codeSwitchPair = resolveCodeSwitchPair(profile);
-  const inputTranscriptionPrompt = isCodeSwitchProfile(profile)
+  const inputTranscriptionPrompt =
+    isCodeSwitchProfile(profile) && PROMPT_TRACK !== "unprompted"
     ? [
         codeSwitchPair === "ca-es"
           ? "The speaker may switch between Catalan and Spanish within the same utterance."
@@ -1263,9 +1290,11 @@ const runOpenAIDiagnosticProbe = async (env: VoiceBenchEnv) => {
 };
 
 const main = async () => {
-  const positionalArgs = process.argv
-    .slice(2)
-    .filter((entry) => !entry.startsWith("--"));
+  const rawArgs = process.argv.slice(2);
+  const positionalArgs = rawArgs.filter(
+    (entry, index) =>
+      !entry.startsWith("--") && rawArgs[index - 1] !== "--track" && rawArgs[index - 1] !== "--runs" && rawArgs[index - 1] !== "--variant",
+  );
   const target = (positionalArgs[0] ?? "all") as VoiceBenchmarkTarget;
   const profile = (positionalArgs[1] ?? "all") as VoiceBenchmarkProfile;
   const mode = process.argv.some((entry) =>
@@ -1276,6 +1305,8 @@ const main = async () => {
   const runs = parseRuns();
   const variant = parseVariant();
   const env = await parseEnv();
+
+  console.error(`STT prompt track: ${PROMPT_TRACK}`);
 
   if (mode === "diagnostic" && target === "openai") {
     const outputPath = resolveOutputPath(target, profile, mode, runs, variant);
@@ -1337,8 +1368,9 @@ const main = async () => {
       await clearBenchmarkResultStem(
         buildResultStem(target, profile, mode, runs, variant),
       );
-      await Bun.write(outputPath, JSON.stringify(report, null, 2));
-      console.log(JSON.stringify(report, null, 2));
+      const annotatedReport = annotateBenchmarkOutput(report);
+      await Bun.write(outputPath, JSON.stringify(annotatedReport, null, 2));
+      console.log(JSON.stringify(annotatedReport, null, 2));
       console.log(`\nSaved benchmark JSON to ${outputPath}`);
       return;
     }
@@ -1358,8 +1390,9 @@ const main = async () => {
     await clearBenchmarkResultStem(
       buildResultStem(target, profile, mode, runs, variant),
     );
-    await Bun.write(outputPath, JSON.stringify(report, null, 2));
-    console.log(JSON.stringify(report, null, 2));
+    const annotatedReport = annotateBenchmarkOutput(report);
+    await Bun.write(outputPath, JSON.stringify(annotatedReport, null, 2));
+    console.log(JSON.stringify(annotatedReport, null, 2));
     console.log(`\nSaved benchmark JSON to ${outputPath}`);
     return;
   }
@@ -1379,7 +1412,7 @@ const main = async () => {
       );
     }
 
-    const output = { reports };
+    const output = annotateBenchmarkOutput({ reports });
     const outputPath = resolveOutputPath(target, profile, mode, runs, variant);
     await clearBenchmarkResultStem(
       buildResultStem(target, profile, mode, runs, variant),
@@ -1404,10 +1437,10 @@ const main = async () => {
     );
   }
 
-  const output = {
+  const output = annotateBenchmarkOutput({
     comparison: compareSTTBenchmarks(reports),
     reports,
-  };
+  });
   const outputPath = resolveOutputPath(target, profile, mode, runs, variant);
   await clearBenchmarkResultStem(
     buildResultStem(target, profile, mode, runs, variant),

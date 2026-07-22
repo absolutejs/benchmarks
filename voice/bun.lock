@@ -5,7 +5,7 @@
     "": {
       "name": "@absolutejs/voice-benchmarks",
       "dependencies": {
-        "@absolutejs/voice": "0.0.22-beta.637",
+        "@absolutejs/voice": "0.0.22-beta.638",
         "@absolutejs/voice-assemblyai": "0.0.19-beta.123",
         "@absolutejs/voice-deepgram": "0.0.20-beta.102",
         "@absolutejs/voice-elevenlabs": "0.0.19",
@@ -37,7 +37,7 @@
 
     "@absolutejs/native-windows-x64": ["@absolutejs/native-windows-x64@0.19.0-beta.811", "", { "os": "win32", "cpu": "x64" }, "sha512-u3hEASyU82U7WQf7ilEMbNuQlxGNioaehq8GLTzOd7XqRg6T0YWlCFJJHgbvcyWMdPDxwy9ZEqMXwSra++5XHA=="],
 
-    "@absolutejs/voice": ["@absolutejs/voice@0.0.22-beta.637", "", { "dependencies": { "@absolutejs/manifest": "^0.1.0", "@absolutejs/media": "0.0.1-beta.19", "@sinclair/typebox": "^0.34.0" }, "peerDependencies": { "@absolutejs/absolute": ">=0.19.0-beta.646", "@absolutejs/ai": ">=0.0.5", "@angular/core": ">=21.0.0", "drizzle-orm": ">=1.0.0-rc.1", "elysia": ">=1.4.18", "react": ">=19.0.0", "vue": ">=3.5.0" }, "optionalPeers": ["@absolutejs/ai", "@angular/core", "drizzle-orm", "react", "vue"] }, "sha512-ZGMjkcM8q3Hh0qFrGeb/jsrmLQht/bDd6miDy8J6QATKuOiuVFW+lX05lqMTbtNPJkuxXzrcwWYOv9AlSxpn/A=="],
+    "@absolutejs/voice": ["@absolutejs/voice@0.0.22-beta.638", "", { "dependencies": { "@absolutejs/manifest": "^0.1.0", "@absolutejs/media": "0.0.1-beta.19", "@sinclair/typebox": "^0.34.0" }, "peerDependencies": { "@absolutejs/absolute": ">=0.19.0-beta.646", "@absolutejs/ai": ">=0.0.5", "@angular/core": ">=21.0.0", "drizzle-orm": ">=1.0.0-rc.1", "elysia": ">=1.4.18", "react": ">=19.0.0", "vue": ">=3.5.0" }, "optionalPeers": ["@absolutejs/ai", "@angular/core", "drizzle-orm", "react", "vue"] }, "sha512-cBF7cJvHzTK1qKKUzOIZrPGSbSkTi/Xy/Z14zljF1c+v6efmgdF0VlK9nKnCIyOKfm/6XjOAjpitGa7NlusUNA=="],
 
     "@absolutejs/voice-assemblyai": ["@absolutejs/voice-assemblyai@0.0.19-beta.123", "", { "dependencies": { "@absolutejs/voice": "0.0.22-beta.346" } }, "sha512-UXFJ4hSEtqKQnGBiVZeJIgdxO6yQTVapzo2i03BUxwqXGy7m8aQBiWcE1zOVyWtOauDkxfz6kJAIWTQsuUlXiw=="],
 

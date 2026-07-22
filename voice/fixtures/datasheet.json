@@ -1,0 +1,38 @@
+{
+  "name": "AbsoluteJS public voice benchmark corpus",
+  "version": "1.0.0",
+  "purpose": "Reproducible evaluation of streaming speech recognition, turn timing, critical-field capture, and adverse audio conditions.",
+  "unit": "One PCM utterance or explicitly documented synthetic concatenation.",
+  "defaultSplit": "public-test",
+  "collections": [
+    {
+      "id": "librispeech-derived",
+      "fixturePatterns": ["quietly-*", "traveled-*", "rainstorms-*", "multiturn-*", "dialogue-*"],
+      "source": "LibriSpeech public-domain source material plus documented deterministic derivatives",
+      "license": "CC BY 4.0",
+      "licenseClass": "permissive",
+      "commercialUse": true
+    },
+    {
+      "id": "speech-accent-archive",
+      "fixturePatterns": ["stella-*"],
+      "source": "George Mason University Speech Accent Archive",
+      "license": "CC BY-NC-SA 2.0",
+      "licenseClass": "noncommercial",
+      "commercialUse": false
+    }
+  ],
+  "speakerMetadata": "Public source metadata is limited to the source archive and country/language tags in manifest.json; demographic attributes are not inferred.",
+  "consentAndPrivacy": "Only public research corpus audio is bundled. Customer recordings and identifiers are prohibited from this repository.",
+  "knownLimitations": [
+    "The bundled corpus is small and cannot establish population-wide accuracy.",
+    "Several dialogue fixtures are synthetic concatenations, not natural conversations.",
+    "The Speech Accent Archive subset is noncommercial and must be reported separately from the permissive core.",
+    "A private held-out corpus is required for deployment-specific claims."
+  ],
+  "evaluationPolicy": {
+    "development": "May be used to tune implementation and prompts.",
+    "public-test": "References are visible; report prompt track and treat oracle-seeded results separately.",
+    "private-held-out": "References are unavailable to provider configuration and correction logic until scoring."
+  }
+}

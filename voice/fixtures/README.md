@@ -7,13 +7,23 @@ for exact names, numbers, and domain terms. Keep customer recordings out of this
 public corpus; applications can load private fixture directories through
 `VOICE_FIXTURE_DIR(S)` without changing the benchmark framework.
 
+`datasheet.json` documents intended use, collection provenance, license class,
+privacy rules, limitations, and split policy. `checksums.sha256` makes the exact
+audio corpus verifiable. Run `bun run corpus:verify` before publishing results.
+
+The permissive LibriSpeech-derived core and the noncommercial Speech Accent
+Archive subset must be reported separately. The latter is not evidence for a
+commercial benchmark claim.
+
 ### Sources
 
 - `quietly-alone-clean.pcm`
 - `traveled-back-route-clean.pcm`
 - `rainstorms-noisy.pcm`
 
-These are derived from public-domain LibriSpeech material, with the noisy variant created by mixing synthetic noise into a clean base utterance for adapter comparison.
+These are derived from LibriSpeech material distributed under CC BY 4.0,
+with the noisy variant created by mixing synthetic noise into a clean base
+utterance for adapter comparison.
 
 - `stella-india-english37.pcm`
 - `stella-ghana-english507.pcm`

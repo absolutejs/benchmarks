@@ -151,10 +151,15 @@
     "bench:vs:deepgram-flux": "bun run ./scripts/benchmark-vs.ts deepgram-flux all --compare benchmarks/your-vapi-metrics.json",
     "bench:vs:deepgram-nova": "bun run ./scripts/benchmark-vs.ts deepgram-nova all",
     "bench:vs:openai": "bun run ./scripts/benchmark-vs.ts openai all",
-    "corpus:multilingual": "bun run ./scripts/build-multilingual-corpus.ts"
+    "corpus:multilingual": "bun run ./scripts/build-multilingual-corpus.ts",
+    "corpus:verify": "bun run ./scripts/verify-corpus.ts",
+    "corpus:matrix": "bun run ./scripts/build-audio-matrix.ts",
+    "corpus:held-out:ingest": "bun run ./scripts/ingest-held-out-corpus.ts",
+    "bench:stt:artifact": "bun run ./scripts/build-stt-artifact.ts",
+    "bench:stt:compare": "bun run ./scripts/compare-stt-reports.ts"
   },
   "dependencies": {
-    "@absolutejs/voice": "0.0.22-beta.637",
+    "@absolutejs/voice": "0.0.22-beta.638",
     "@absolutejs/voice-assemblyai": "0.0.19-beta.123",
     "@absolutejs/voice-deepgram": "0.0.20-beta.102",
     "@absolutejs/voice-elevenlabs": "0.0.19",
