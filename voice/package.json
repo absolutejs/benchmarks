@@ -120,6 +120,7 @@
     "bench:stt:best:sessions": "bun run ./scripts/benchmark-session.ts best-stt",
     "bench:stt:cheap:sessions": "bun run ./scripts/benchmark-session.ts cheap-stt",
     "bench:stt:routing:run": "bun run ./scripts/run-stt-routing-benchmarks.ts",
+    "bench:stt:routing:evaluate": "bun run ./scripts/evaluate-stt-routing-reports.ts",
     "bench:telephony": "bun run ./scripts/benchmark-stt.ts all telephony",
     "bench:telephony:bridge": "bun run ./scripts/benchmark-telephony.ts",
     "bench:telephony:live": "bun run ./scripts/benchmark-live-telephony.ts",
@@ -153,11 +154,11 @@
     "corpus:multilingual": "bun run ./scripts/build-multilingual-corpus.ts"
   },
   "dependencies": {
-    "@absolutejs/voice": "0.0.22-beta.635",
+    "@absolutejs/voice": "0.0.22-beta.637",
     "@absolutejs/voice-assemblyai": "0.0.19-beta.123",
-    "@absolutejs/voice-deepgram": "0.0.20-beta.101",
+    "@absolutejs/voice-deepgram": "0.0.20-beta.102",
     "@absolutejs/voice-elevenlabs": "0.0.19",
-    "@absolutejs/voice-openai": "0.0.7-beta.40"
+    "@absolutejs/voice-openai": "0.0.7-beta.43"
   },
   "devDependencies": {
     "@types/bun": "1.3.9",

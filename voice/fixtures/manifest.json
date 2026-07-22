@@ -15,6 +15,20 @@
     "audioPath": "traveled-back-route-clean.pcm",
     "expectedText": "WE PASSED AROUND ATLANTA CROSSED THE CHATTAHOOCHEE AND TRAVELED BACK OVER THE SAME ROUTE ON WHICH WE HAD MADE THE ARDUOUS CAMPAIGN UNDER JOE JOHNSTON",
     "expectedTerms": ["atlanta", "chattahoochee", "joe johnston"],
+    "expectedCriticalFields": [
+      {
+        "id": "campaign-location",
+        "kind": "custom",
+        "value": "Chattahoochee",
+        "required": true
+      },
+      {
+        "id": "person-name",
+        "kind": "person-name",
+        "value": "Joe Johnston",
+        "required": true
+      }
+    ],
     "chunkDurationMs": 100,
     "difficulty": "clean",
     "tags": ["clean", "long", "librispeech"]
@@ -43,6 +57,28 @@
       "toy frog",
       "three red bags",
       "train station"
+    ],
+    "expectedCriticalFields": [
+      {
+        "id": "person-name",
+        "kind": "person-name",
+        "value": "Stella",
+        "required": true
+      },
+      {
+        "id": "spoon-count",
+        "kind": "number",
+        "value": "6",
+        "aliases": ["six"],
+        "required": true
+      },
+      {
+        "id": "bag-count",
+        "kind": "number",
+        "value": "3",
+        "aliases": ["three"],
+        "required": true
+      }
     ],
     "chunkDurationMs": 100,
     "difficulty": "challenging",

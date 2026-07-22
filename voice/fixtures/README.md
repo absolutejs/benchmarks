@@ -2,6 +2,11 @@
 
 This directory contains small public benchmark fixtures for `@absolutejs/voice`.
 
+The manifest uses the reusable `@absolutejs/voice/testing` critical-field schema
+for exact names, numbers, and domain terms. Keep customer recordings out of this
+public corpus; applications can load private fixture directories through
+`VOICE_FIXTURE_DIR(S)` without changing the benchmark framework.
+
 ### Sources
 
 - `quietly-alone-clean.pcm`

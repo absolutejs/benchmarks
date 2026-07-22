@@ -124,6 +124,7 @@ const asRealtimeSTTAdapter = (adapter: RealtimeAdapter): STTAdapter => ({
 
     return {
       close: (reason?: string) => session.close(reason),
+      configure: (configuration) => session.configure?.(configuration) ?? Promise.resolve(),
       on: session.on,
       send: async (audio: AudioChunk) => {
         const input = toUint8Array(audio);
