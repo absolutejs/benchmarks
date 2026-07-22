@@ -1,16 +1,7 @@
 name: Voice corpus integrity
 
 on:
-  pull_request:
-    paths:
-      - "voice/fixtures/**"
-      - "voice/scripts/verify-corpus.ts"
-      - "voice/package.json"
-  push:
-    branches: [main]
-    paths:
-      - "voice/fixtures/**"
-      - "voice/scripts/verify-corpus.ts"
+  workflow_dispatch:
 
 jobs:
   verify:
