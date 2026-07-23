@@ -159,7 +159,7 @@
     "bench:stt:compare": "bun run ./scripts/compare-stt-reports.ts"
   },
   "dependencies": {
-    "@absolutejs/voice": "0.0.22-beta.638",
+    "@absolutejs/voice": "0.0.22-beta.643",
     "@absolutejs/voice-assemblyai": "0.0.19-beta.123",
     "@absolutejs/voice-deepgram": "0.0.20-beta.102",
     "@absolutejs/voice-elevenlabs": "0.0.19",

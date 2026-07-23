@@ -29,14 +29,14 @@
   },
   "dependencies": {
     "@absolutejs/isolated-jsc": "0.6.0",
-    "@absolutejs/sync": "1.7.8",
+    "@absolutejs/sync": "2.9.1",
     "@absolutejs/sync-bus-pg": "^0.0.1",
     "@rocicorp/zero": "^1.5.0",
     "@tanstack/db": "^0.6.7",
     "@tanstack/query-core": "^5.100.14",
     "@tanstack/query-db-collection": "^1.0.38",
     "convex": "^1.17.0",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "1.0.0-rc.4",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
