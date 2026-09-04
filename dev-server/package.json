@@ -1,0 +1,16 @@
+{
+	"name": "@absolutejs/dev-server-benchmarks",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Cold and warm `absolute dev` boot timings: time to first byte, time to ready, time to the first real page.",
+	"type": "module",
+	"scripts": {
+		"bench": "bun run ./scripts/bench-boot.ts",
+		"compare": "bun run ./scripts/compare.ts",
+		"report": "bun run ./scripts/report.ts"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"typescript": "^5.9.3"
+	}
+}
